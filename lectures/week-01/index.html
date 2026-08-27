@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Неделя 1 — ИИ в игровой разработке</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #12161c;
+      --fg: #eef2f6;
+      --muted: #8b97a8;
+      --accent: #3dbe9a;
+      --line: #2a3340;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: Manrope, system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse 90% 60% at 5% -5%, #2a4a52 0%, transparent 58%),
+        radial-gradient(ellipse 70% 55% at 105% 105%, #2c3548 0%, transparent 52%),
+        radial-gradient(ellipse 50% 40% at 70% 20%, #1e3a36 0%, transparent 45%),
+        var(--bg);
+    }
+
+    .deck {
+      height: 100%;
+      position: relative;
+      outline: none;
+    }
+
+    .deck:focus,
+    .deck:focus-visible {
+      outline: none;
+    }
+
+    .slide {
+      display: none;
+      height: 100%;
+      padding: clamp(2rem, 6vw, 4.5rem);
+      flex-direction: column;
+      justify-content: center;
+      gap: 1.25rem;
+      max-width: 56rem;
+      margin: 0 auto;
+    }
+
+    .slide.is-active {
+      display: flex;
+      animation: in 280ms ease-out;
+    }
+
+    @keyframes in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .kicker {
+      color: var(--accent);
+      font-size: clamp(0.85rem, 1.6vw, 1.05rem);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 4.2rem);
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      font-size: clamp(1.9rem, 4.5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .keys {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1.1rem;
+      margin-top: 0.5rem;
+      font-size: clamp(1.15rem, 2.4vw, 1.55rem);
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .keys span::before {
+      content: "·";
+      margin-right: 1.1rem;
+      color: var(--accent);
+    }
+
+    .keys span:first-child::before { content: none; margin: 0; }
+
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem 0.35rem;
+      margin-top: 0.75rem;
+      font-size: clamp(1.2rem, 2.6vw, 1.7rem);
+      font-weight: 700;
+    }
+
+    .flow .step { color: var(--fg); }
+    .flow .arrow {
+      color: var(--accent);
+      margin: 0 0.35rem;
+      font-weight: 500;
+    }
+
+    .kinds {
+      display: grid;
+      gap: 0.85rem;
+      margin-top: 1rem;
+      font-size: clamp(1.25rem, 2.8vw, 1.85rem);
+      font-weight: 700;
+    }
+
+    .kinds li {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .kinds li::before {
+      content: "";
+      display: inline-block;
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-right: 0.75rem;
+      vertical-align: middle;
+    }
+
+    .kinds--muted {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .kinds--muted li::before {
+      background: color-mix(in srgb, var(--accent) 45%, var(--muted));
+    }
+
+    code, .mono {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-weight: 500;
+    }
+
+    .hint {
+      position: fixed;
+      left: 1.25rem;
+      bottom: 1.1rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      opacity: 0.7;
+    }
+
+    .counter {
+      position: fixed;
+      right: 1.25rem;
+      bottom: 1.1rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 8px;
+      background: var(--accent);
+      width: 0;
+      transition: width 200ms ease;
+    }
+
+    @media (max-width: 640px) {
+      .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress" id="progress"></div>
+  <div class="deck" id="deck" tabindex="0">
+
+    <section class="slide is-active" data-slide>
+      <p class="kicker">Неделя 1</p>
+      <h1>ИИ в игровой разработке</h1>
+      <p class="keys"><span>старт курса</span></p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Цель курса</p>
+      <h2>Способы работы с ИИ</h2>
+      <ul class="kinds kinds--muted">
+        <li>сравнение сценариев</li>
+        <li>рабочие мини-демо</li>
+      </ul>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Как устроен курс</p>
+      <h2>Каждая тема включает:</h2>
+      <p class="flow">
+        <span class="step">лекцию</span><span class="arrow">→</span>
+        <span class="step">практику</span><span class="arrow">→</span>
+        <span class="step">артефакт</span><span class="arrow">→</span>
+        <span class="step">защиту</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Полигон</p>
+      <h2>В чём делаем</h2>
+      <p class="keys">
+        <span>web</span>
+        <span>Godot</span>
+        <span>Blender</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Инструменты</p>
+      <h2>Что доступно в РФ</h2>
+      <p class="keys">
+        <span>DeepSeek</span>
+        <span>Qwen</span>
+        <span>GigaChat</span>
+        <span>браузерный чат</span>
+        <span>VS Code + Cline</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">ИИ в играх</p>
+      <h2>Не только нейросеть</h2>
+      <ul class="kinds">
+        <li>Классика</li>
+        <li>Генератив</li>
+        <li>LLM</li>
+      </ul>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Примеры</p>
+      <h2>Где это уже в играх</h2>
+      <p class="keys">
+        <span>NPC</span>
+        <span>pathfinding</span>
+        <span>рогалик / ProcGen</span>
+        <span>LLM-диалоги</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">① Классика</p>
+      <h2>Game AI без нейросети</h2>
+      <p class="keys">
+        <span>FSM</span>
+        <span>patrol</span>
+        <span>chase</span>
+        <span>attack</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">② Генератив</p>
+      <h2>Контент, который генерят</h2>
+      <p class="keys">
+        <span>картинки</span>
+        <span>уровни</span>
+        <span>ProcGen</span>
+        <span>ассеты</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">③ LLM</p>
+      <h2>Языковые модели и агенты</h2>
+      <p class="keys">
+        <span>кодовая база</span>
+        <span>контекст-инжиниринг</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Неделя 1 · сдача</p>
+      <h2>Артефакт</h2>
+      <p class="keys">
+        <span class="mono">week01-gdd.md</span>
+        <span>без кода</span>
+        <span>«ИИ / я»</span>
+      </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">Дальше</p>
+      <h2>Сейчас — чат</h2>
+      <p class="keys">
+        <span>плохой → хороший промпт</span>
+      </p>
+    </section>
+
+  </div>
+
+  <p class="hint">← → · пробел · клик</p>
+  <p class="counter"><span id="current">1</span> / <span id="total">12</span></p>
+
+  <script>
+    const slides = [...document.querySelectorAll("[data-slide]")];
+    const currentEl = document.getElementById("current");
+    const totalEl = document.getElementById("total");
+    const progress = document.getElementById("progress");
+    let index = 0;
+
+    totalEl.textContent = String(slides.length);
+
+    function show(i) {
+      index = Math.max(0, Math.min(slides.length - 1, i));
+      slides.forEach((s, n) => s.classList.toggle("is-active", n === index));
+      currentEl.textContent = String(index + 1);
+      progress.style.width = ((index + 1) / slides.length) * 100 + "%";
+      history.replaceState(null, "", "#" + (index + 1));
+    }
+
+    function next() { show(index + 1); }
+    function prev() { show(index - 1); }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        next();
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        prev();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        show(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        show(slides.length - 1);
+      }
+    });
+
+    document.getElementById("deck").addEventListener("click", (e) => {
+      if (e.target.closest("a")) return;
+      const x = e.clientX / window.innerWidth;
+      if (x < 0.28) prev();
+      else next();
+    });
+
+    const fromHash = parseInt(location.hash.slice(1), 10);
+    show(Number.isFinite(fromHash) && fromHash >= 1 ? fromHash - 1 : 0);
+    document.getElementById("deck").focus();
+  </script>
+</body>
+</html>
