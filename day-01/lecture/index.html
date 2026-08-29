@@ -221,6 +221,25 @@
       flex-shrink: 0;
     }
 
+    .slide--dense {
+      gap: 0.6rem;
+      padding-top: clamp(1.4rem, 3.5vw, 2.75rem);
+      padding-bottom: clamp(1.4rem, 3.5vw, 2.75rem);
+    }
+
+    .prompt {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: clamp(0.84rem, 1.58vw, 1.05rem);
+      line-height: 1.28;
+      font-weight: 500;
+      color: color-mix(in srgb, var(--fg) 82%, var(--muted));
+      white-space: pre-wrap;
+      background: color-mix(in srgb, var(--line) 50%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 0.45rem;
+      padding: 0.75rem 0.9rem;
+    }
+
     @media (max-width: 640px) {
       .hint { display: none; }
     }
@@ -351,7 +370,6 @@
         <li>Что означает создать GDD через LLM-чат?</li>
         <li>LLM-диалоги (и почему это хрупко)?</li>
         <li>Что такое деревья решений и чем они отличаются от FSM?</li>
-        <li>Что такое «спагетти» состояний?</li>
         <li>Что такое пич в GDD?</li>
         <li>Что такое лор (lore)?</li>
         <li>RPG, рогалик и arcade — в чём отличия?</li>
@@ -362,14 +380,35 @@
       <p class="kicker">Дальше</p>
       <h2>Сейчас — чат</h2>
       <p class="keys">
-        <span>плохой → хороший промпт</span>
+        <span>плохой → хороший промпт<br>(есть в вашем задании)</span>
       </p>
+    </section>
+
+    <section class="slide slide--dense" data-slide>
+      <p class="kicker">Пример · хороший промпт</p>
+      <pre class="prompt">Ты — геймдизайнер мини-игр.
+Составь короткий GDD одноэкранной 2D-игры на 5–10 минут.
+Без кода и длинного лора — только механика.
+
+Ограничения:
+- top-down или платформер
+- 1 игрок, 1 тип врага, без сети
+- реализуемо студентом 2 курса за 2–4 практики
+
+Структура ответа:
+1. Название
+2. Пич (1 предложение)
+3. Цель игрока
+4. Управление
+5. Враг: 3–5 пунктов как конечный автомат
+6. Победа / поражение
+7. Позже (макс. 3 пункта)</pre>
     </section>
 
   </div>
 
   <p class="hint">← → · пробел · клик</p>
-  <p class="counter"><span id="current">1</span> / <span id="total">13</span></p>
+  <p class="counter"><span id="current">1</span> / <span id="total">14</span></p>
 
   <script>
     const slides = [...document.querySelectorAll("[data-slide]")];
