@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Неделя 1 — ИИ в игровой разработке</title>
+  <title>День 1 — ИИ в игровой разработке</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
@@ -189,6 +189,38 @@
       transition: width 200ms ease;
     }
 
+    .quiz {
+      display: grid;
+      gap: 0.45rem;
+      margin-top: 0.35rem;
+      font-size: clamp(0.9rem, 1.85vw, 1.15rem);
+      font-weight: 500;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .quiz li {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .quiz li::before {
+      content: "?";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.15rem;
+      height: 1.15rem;
+      border-radius: 50%;
+      border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+      color: var(--accent);
+      font-size: 0.65rem;
+      font-weight: 800;
+      margin-right: 0.55rem;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+
     @media (max-width: 640px) {
       .hint { display: none; }
     }
@@ -199,7 +231,7 @@
   <div class="deck" id="deck" tabindex="0">
 
     <section class="slide is-active" data-slide>
-      <p class="kicker">Неделя 1</p>
+      <p class="kicker">День 1</p>
       <h1>ИИ в игровой разработке</h1>
       <p class="keys"><span>старт курса</span></p>
     </section>
@@ -218,7 +250,7 @@
       <p class="kicker">Как устроен курс</p>
       <h2>Каждая тема включает:</h2>
       <p class="flow">
-        <span class="step">лекцию</span><span class="arrow">→</span>
+        <span class="step">лекцию / обсуждение</span><span class="arrow">→</span>
         <span class="step">практику</span><span class="arrow">→</span>
         <span class="step">артефакт</span><span class="arrow">→</span>
         <span class="step">защиту</span>
@@ -233,13 +265,13 @@
         <span>Qwen</span>
         <span>GigaChat</span>
         <span>браузерный чат</span>
-        <span>VS Code + Cline</span>
+        <span>VS Code + Cline + Polza (агрегатор)</span>
       </p>
     </section>
 
     <section class="slide" data-slide>
       <p class="kicker">ИИ в играх</p>
-      <h2>Не только нейросеть</h2>
+      <h2>Не только нейросеть. Три вида ИИ</h2>
       <ul class="kinds">
         <li>Классика</li>
         <li>Генератив</li>
@@ -290,12 +322,12 @@
     </section>
 
     <section class="slide" data-slide>
-      <p class="kicker">Неделя 1 · сдача</p>
+      <p class="kicker">День 1 · сдача</p>
       <h2>Артефакт</h2>
       <p class="keys">
-        <span class="mono">week01-gdd.md</span>
-        <span>без кода</span>
-        <span>«ИИ / я»</span>
+        <span class="mono">day01-gdd.md</span>
+        <span>GDD (без кода)</span>
+        <span>обсуждение</span>
       </p>
     </section>
 
@@ -303,10 +335,27 @@
       <p class="kicker">Полигон</p>
       <h2>Где экспериментируем</h2>
       <p class="keys">
-        <span>web (60%)</span>
-        <span>Godot (20%)</span>
-        <span>threejs/Blender (20%)</span>
+        <span>web / canvas (80%)</span>
+        <span>three.js (10%)</span>
+        <span>Godot (10%)</span>
       </p>
+    </section>
+
+    <section class="slide" data-slide>
+      <p class="kicker">День 1 · самопроверка</p>
+      <ul class="quiz">
+        <li>Чем классический game AI отличается от ChatGPT?</li>
+        <li>Что такое конечный автомат?</li>
+        <li>Что значат patrol → chase → attack?</li>
+        <li>LLM-чат — это?</li>
+        <li>Что означает создать GDD через LLM-чат?</li>
+        <li>LLM-диалоги (и почему это хрупко)?</li>
+        <li>Что такое деревья решений и чем они отличаются от FSM?</li>
+        <li>Что такое «спагетти» состояний?</li>
+        <li>Что такое пич в GDD?</li>
+        <li>Что такое лор (lore)?</li>
+        <li>RPG, рогалик и arcade — в чём отличия?</li>
+      </ul>
     </section>
 
     <section class="slide" data-slide>
@@ -320,7 +369,7 @@
   </div>
 
   <p class="hint">← → · пробел · клик</p>
-  <p class="counter"><span id="current">1</span> / <span id="total">12</span></p>
+  <p class="counter"><span id="current">1</span> / <span id="total">13</span></p>
 
   <script>
     const slides = [...document.querySelectorAll("[data-slide]")];
