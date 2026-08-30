@@ -19,7 +19,7 @@
 - Демо: за ~20 мин с ИИ набросать дизайн одноэкранной игры (только текст)
 
 Подробно (преподаватель): [day-01/day-01.md](./day-01/day-01.md)  
-Задание для студентов (GitHub): [day-01/tasks/README.md](./day-01/tasks/README.md)
+Задание для студентов (GitHub): [day-01/tasks/task-01.md](./day-01/tasks/task-01.md)
 
 ### М1. ИИ как копилот разработчика (дни 2–3)
 
@@ -28,7 +28,7 @@
 - Godot: Hello World 2D, сцена, скрипт, ввод
 
 Подробно (преподаватель): [day-02/day-02.md](./day-02/day-02.md)  
-Задание для студентов (GitHub): [day-02/tasks/README.md](./day-02/tasks/README.md)
+Задание для студентов (GitHub): [day-02/tasks/task-02.md](./day-02/tasks/task-02.md)
 
 ### М2. Классический game AI (дни 4–6)
 
