@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Страж арены — Day 02</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a2e;
+      color: #eee;
+      font-family: system-ui, sans-serif;
+      padding: 1rem;
+    }
+    .game-wrapper {
+      background: #16213e;
+      padding: 1.5rem 1.5rem 1rem;
+      border-radius: 20px;
+      border: 2px solid #4ecca3;
+      box-shadow: 0 0 30px rgba(78, 204, 163, 0.2);
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      border-radius: 12px;
+      background: #0f1a2f;
+      width: 800px;
+      height: 600px;
+    }
+    .status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1rem;
+      padding: 0 0.5rem;
+      font-size: 1.1rem;
+      letter-spacing: 0.5px;
+      background: #1e2a47;
+      border-radius: 40px;
+      padding: 0.6rem 1.8rem;
+      width: 100%;
+    }
+    .status span {
+      opacity: 0.9;
+    }
+    .keys {
+      background: #2a3a5e;
+      padding: 0.3rem 1.2rem;
+      border-radius: 40px;
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+    .restart-btn {
+      background: #e94560;
+      border: none;
+      color: white;
+      font-weight: bold;
+      padding: 0.3rem 1.4rem;
+      border-radius: 40px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: 0.2s;
+    }
+    .restart-btn:hover {
+      background: #ff6b81;
+      transform: scale(1.02);
+    }
+    p { margin: 0.5rem 0 0; font-size: 0.9rem; opacity: 0.7; }
+  </style>
+</head>
+<body>
+<div class="game-wrapper">
+  <canvas id="game" width="800" height="600"></canvas>
+  <div class="status">
+    <span>❤️ <span id="livesDisplay">3</span></span>
+    <span>🗝️ <span id="keysDisplay">0</span> / 5</span>
+    <span class="keys">WASD / стрелки</span>
+    <button class="restart-btn" id="restartBtn">↻ рестарт</button>
+  </div>
+  <p>Собери 5 ключей и доберись до выхода (зелёная мигалка). Страж преследует!</p>
+</div>
+
+<script>
+  (function() {
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const livesSpan = document.getElementById('livesDisplay');
+    const keysSpan = document.getElementById('keysDisplay');
+
+    // ---------- размеры ----------
+    const W = 800, H = 600;
+
+    // ---------- игрок ----------
+    const player = {
+      x: 70, y: 70,
+      w: 28, h: 28,
+      speed: 3.8,
+      color: '#4ecca3',
+      lives: 3,
+      keys: 0
+    };
+
+    // ---------- препятствия ----------
+    const obstacles = [
+      { x: 280, y: 200, w: 140, h: 28, color: '#e94560' },
+      { x: 120, y: 380, w: 220, h: 6, color: '#e94560' },
+      { x: 560, y: 480, w: 160, h: 28, color: '#e94560' },
+      { x: 540, y: 100, w: 28, h: 140, color: '#e94560' },
+    ];
+
+    // ---------- ключи ----------
+    let keysList = [];
+    function resetKeys() {
+      keysList = [
+        { x: 180, y: 130, w: 16, h: 16, collected: false },
+        { x: 680, y: 260, w: 16, h: 16, collected: false },
+        { x: 390, y: 440, w: 16, h: 16, collected: false },
+        { x: 630, y: 500, w: 16, h: 16, collected: false },
+        { x: 100, y: 490, w: 16, h: 16, collected: false },
+      ];
+    }
+    resetKeys();
+
+    // ---------- выход ----------
+    const exitDoor = {
+      x: 720, y: 40,
+      w: 36, h: 36,
+      color: '#2ecc71'
+    };
+
+    // ---------- враг (страж) ----------
+    const enemy = {
+      x: 500, y: 400,
+      w: 30, h: 30,
+      color: '#f5a623',
+      // состояния: 'patrol', 'chase', 'attack'
+      state: 'patrol',
+      speed: 1.8,        // patrol speed
+      chaseSpeed: 3.6,
+      attackTimer: 0,
+      attackCooldown: 0, // для защиты от мгновенных повторных ударов
+      // patrol-маршрут (квадратный)
+      patrolAngle: 0,
+      patrolRadius: 140,
+      centerX: 500,
+      centerY: 300,
+      // видимость
+      viewRadius: 240,
+    };
+
+    // ---------- клавиши ----------
+    const keys = {};
+
+    // ---------- таймер для перехода в патруль (потеря игрока) ----------
+    let playerLostTimer = 0;
+    const LOST_TIMEOUT = 120; // ~2 секунды (60fps)
+
+    // ---------- игровой флаг ----------
+    let gameOver = false;
+    let win = false;
+
+    // ---------- вспомогательные функции ----------
+    function rectsOverlap(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x &&
+             a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function dist(a, b) {
+      const dx = a.x + a.w/2 - (b.x + b.w/2);
+      const dy = a.y + a.h/2 - (b.y + b.h/2);
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    // ---------- сброс игры ----------
+    function resetGame() {
+      player.x = 70; player.y = 70;
+      player.lives = 3;
+      player.keys = 0;
+      gameOver = false;
+      win = false;
+      enemy.x = 500; enemy.y = 400;
+      enemy.state = 'patrol';
+      enemy.attackTimer = 0;
+      enemy.attackCooldown = 0;
+      enemy.patrolAngle = 0;
+      playerLostTimer = 0;
+      resetKeys();
+      updateUI();
+    }
+
+    // ---------- UI ----------
+    function updateUI() {
+      livesSpan.textContent = player.lives;
+      keysSpan.textContent = player.keys;
+    }
+
+    // ---------- обработка столкновений с препятствиями ----------
+    function handleObstacleCollision(entity, dx, dy) {
+      // пробуем по X
+      entity.x += dx;
+      for (const obs of obstacles) {
+        if (rectsOverlap(entity, obs)) {
+          entity.x -= dx;
+          break;
+        }
+      }
+      // пробуем по Y
+      entity.y += dy;
+      for (const obs of obstacles) {
+        if (rectsOverlap(entity, obs)) {
+          entity.y -= dy;
+          break;
+        }
+      }
+    }
+
+    // ---------- обновление ----------
+    function update() {
+      if (gameOver || win) return;
+
+      // ---- 1. движение игрока ----
+      let dx = 0, dy = 0;
+      if (keys['KeyW'] || keys['ArrowUp']) dy = -player.speed;
+      if (keys['KeyS'] || keys['ArrowDown']) dy = player.speed;
+      if (keys['KeyA'] || keys['ArrowLeft']) dx = -player.speed;
+      if (keys['KeyD'] || keys['ArrowRight']) dx = player.speed;
+
+      if (dx !== 0 && dy !== 0) {
+        dx *= 0.707;
+        dy *= 0.707;
+      }
+
+      if (dx !== 0 || dy !== 0) {
+        handleObstacleCollision(player, dx, dy);
+      }
+
+      // границы арены
+      player.x = Math.max(0, Math.min(W - player.w, player.x));
+      player.y = Math.max(0, Math.min(H - player.h, player.y));
+
+      // ---- 2. сбор ключей ----
+      for (const key of keysList) {
+        if (!key.collected && rectsOverlap(player, key)) {
+          key.collected = true;
+          player.keys++;
+          updateUI();
+        }
+      }
+
+      // ---- 3. проверка победы (5 ключей + выход) ----
+      if (player.keys >= 5 && rectsOverlap(player, exitDoor)) {
+        win = true;
+        return;
+      }
+
+      // ---- 4. страж (AI) ----
+      const playerCenter = { x: player.x + player.w/2, y: player.y + player.h/2 };
+      const enemyCenter = { x: enemy.x + enemy.w/2, y: enemy.y + enemy.h/2 };
+      const distance = dist(player, enemy);
+
+      // --- видимость ---
+      const isPlayerVisible = distance < enemy.viewRadius;
+
+      // --- состояние: attack ---
+      if (enemy.state === 'attack') {
+        enemy.attackTimer--;
+        if (enemy.attackTimer <= 0) {
+          // после атаки: если игрок рядом → снова chase, иначе patrol
+          if (distance < enemy.viewRadius) {
+            enemy.state = 'chase';
+          } else {
+            enemy.state = 'patrol';
+          }
+          enemy.attackTimer = 0;
+        }
+        // в attack не двигаемся
+        // но проверяем, не пора ли нанести удар (в момент 0)
+        if (enemy.attackTimer === 0 && distance < 40) {
+          // нанести удар
+          if (enemy.attackCooldown <= 0) {
+            player.lives--;
+            updateUI();
+            enemy.attackCooldown = 30; // небольшая задержка между ударами
+            if (player.lives <= 0) {
+              gameOver = true;
+              return;
+            }
+          }
+        }
+        // уменьшаем кулдаун
+        if (enemy.attackCooldown > 0) enemy.attackCooldown--;
+        return; // ничего не двигаем
+      }
+
+      // --- если не attack, уменьшаем кулдаун ---
+      if (enemy.attackCooldown > 0) enemy.attackCooldown--;
+
+      // --- переход в attack ---
+      if (distance < 38 && enemy.state !== 'attack') {
+        enemy.state = 'attack';
+        enemy.attackTimer = 30; // 0.5 сек при 60fps
+        // наносим удар сразу (в начале анимации)
+        if (enemy.attackCooldown <= 0) {
+          player.lives--;
+          updateUI();
+          enemy.attackCooldown = 30;
+          if (player.lives <= 0) {
+            gameOver = true;
+            return;
+          }
+        }
+        return;
+      }
+
+      // --- логика patrol / chase ---
+      if (enemy.state === 'patrol') {
+        // если игрок в радиусе → chase
+        if (isPlayerVisible) {
+          enemy.state = 'chase';
+          playerLostTimer = 0;
+        } else {
+          // патруль: квадратный маршрут
+          enemy.patrolAngle += 0.015;
+          const angle = enemy.patrolAngle;
+          const rx = Math.sin(angle) * enemy.patrolRadius;
+          const ry = Math.cos(angle) * enemy.patrolRadius * 0.6;
+          const targetX = enemy.centerX + rx - enemy.w/2;
+          const targetY = enemy.centerY + ry - enemy.h/2;
+          // движение к цели
+          const dxEnemy = targetX - enemy.x;
+          const dyEnemy = targetY - enemy.y;
+          const len = Math.sqrt(dxEnemy*dxEnemy + dyEnemy*dyEnemy);
+          if (len > 2) {
+            const step = Math.min(enemy.speed, len);
+            const moveX = (dxEnemy / len) * step;
+            const moveY = (dyEnemy / len) * step;
+            handleObstacleCollision(enemy, moveX, moveY);
+          }
+        }
+      } else if (enemy.state === 'chase') {
+        // если игрок вне радиуса → запускаем таймер потери
+        if (!isPlayerVisible) {
+          playerLostTimer++;
+          if (playerLostTimer > LOST_TIMEOUT) {
+            enemy.state = 'patrol';
+            playerLostTimer = 0;
+          }
+        } else {
+          playerLostTimer = 0;
+        }
+
+        // движение к игроку (chase speed)
+        const dxEnemy = playerCenter.x - enemyCenter.x;
+        const dyEnemy = playerCenter.y - enemyCenter.y;
+        const len = Math.sqrt(dxEnemy*dxEnemy + dyEnemy*dyEnemy);
+        if (len > 2) {
+          const step = Math.min(enemy.chaseSpeed, len);
+          const moveX = (dxEnemy / len) * step;
+          const moveY = (dyEnemy / len) * step;
+          handleObstacleCollision(enemy, moveX, moveY);
+        }
+
+        // проверка на attack (если близко)
+        if (distance < 40 && enemy.state !== 'attack') {
+          enemy.state = 'attack';
+          enemy.attackTimer = 30;
+          if (enemy.attackCooldown <= 0) {
+            player.lives--;
+            updateUI();
+            enemy.attackCooldown = 30;
+            if (player.lives <= 0) {
+              gameOver = true;
+              return;
+            }
+          }
+        }
+      }
+
+      // границы врага
+      enemy.x = Math.max(0, Math.min(W - enemy.w, enemy.x));
+      enemy.y = Math.max(0, Math.min(H - enemy.h, enemy.y));
+    }
+
+    // ---------- отрисовка ----------
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // --- препятствия ---
+      for (const obs of obstacles) {
+        ctx.fillStyle = obs.color;
+        ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+      }
+
+      // --- ключи ---
+      for (const key of keysList) {
+        if (!key.collected) {
+          ctx.shadowColor = '#f1c40f';
+          ctx.shadowBlur = 16;
+          ctx.fillStyle = '#f1c40f';
+          ctx.beginPath();
+          ctx.arc(key.x + 8, key.y + 8, 10, 0, Math.PI*2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#f39c12';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillText('⭐', key.x+2, key.y+14);
+        }
+      }
+
+      // --- выход ---
+      ctx.shadowColor = '#2ecc71';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = exitDoor.color;
+      ctx.beginPath();
+      ctx.arc(exitDoor.x + 18, exitDoor.y + 18, 20, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('🚪', exitDoor.x+6, exitDoor.y+29);
+
+      // --- игрок ---
+      ctx.shadowColor = '#4ecca3';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('🧝', player.x+2, player.y+20);
+
+      // --- враг ---
+      ctx.shadowColor = '#f5a623';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = enemy.color;
+      ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#1a1a2e';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('👹', enemy.x+2, enemy.y+20);
+
+      // --- состояние врага (отладка) ---
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px monospace';
+      ctx.fillText('🧠 ' + enemy.state, 10, 20);
+
+      // --- Game Over / Win ---
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#e94560';
+        ctx.font = 'bold 52px sans-serif';
+        ctx.fillText('💀 ПОРАЖЕНИЕ', 180, 320);
+      } else if (win) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#f1c40f';
+        ctx.font = 'bold 56px sans-serif';
+        ctx.fillText('🏆 ПОБЕДА!', 220, 320);
+        ctx.fillStyle = '#fff';
+        ctx.font = '24px sans-serif';
+        ctx.fillText('Ты собрал все ключи и спасся!', 230, 400);
+      }
+
+      // сброс тени
+      ctx.shadowBlur = 0;
+    }
+
+    // ---------- цикл ----------
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ---------- события клавиш ----------
+    window.addEventListener('keydown', (e) => {
+      const code = e.code;
+      if (code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight') {
+        e.preventDefault();
+      }
+      keys[code] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    // ---------- рестарт ----------
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      resetGame();
+    });
+
+    // ---------- старт ----------
+    resetGame();
+    gameLoop();
+  })();
+</script>
+</body>
+</html>
