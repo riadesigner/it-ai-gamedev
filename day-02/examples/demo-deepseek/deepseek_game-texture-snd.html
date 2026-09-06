@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Страж арены — Day 02</title>
+  <!-- Font Awesome 4.7.0 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: #1a1a2e;
+      color: #eee;
+      font-family: system-ui, sans-serif;
+    }
+    canvas {
+      border: 2px solid #4ecca3;
+      background: #16213e;
+      display: block;
+      cursor: default;
+    }
+    p { margin: 0; font-size: 0.9rem; opacity: 0.85; }
+    #ui {
+      display: flex;
+      gap: 2rem;
+      font-size: 1.1rem;
+      background: #0f0f1f;
+      padding: 0.4rem 1.2rem;
+      border-radius: 2rem;
+      border: 1px solid #4ecca366;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #ui span {
+      font-weight: bold;
+      color: #f5a623;
+    }
+    #ui .boost-info {
+      color: #ffd93d;
+      font-weight: bold;
+    }
+    #msg {
+      min-height: 1.6rem;
+      font-size: 1rem;
+      color: #f5a623;
+      font-weight: bold;
+    }
+    #restartBtn {
+      background: #4ecca3;
+      border: none;
+      color: #1a1a2e;
+      font-weight: bold;
+      padding: 0.2rem 1rem;
+      border-radius: 1.5rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: 0.2s;
+    }
+    #restartBtn:hover {
+      background: #6fdfb8;
+      transform: scale(1.05);
+    }
+    #pause-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      flex-direction: column;
+      gap: 2rem;
+      pointer-events: none;
+    }
+    #pause-overlay.show {
+      display: flex;
+      pointer-events: auto;
+    }
+    #pause-text {
+      font-size: 4rem;
+      font-weight: bold;
+      color: #ff6b6b;
+      text-shadow: 0 0 30px #ff6b6b66;
+      animation: pulse 0.6s ease-in-out infinite alternate;
+    }
+    #pause-text.win {
+      color: #4ecca3;
+      text-shadow: 0 0 30px #4ecca366;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.5; transform: scale(0.9); }
+      100% { opacity: 1; transform: scale(1.1); }
+    }
+    #overlay-restart-btn {
+      background: #4ecca3;
+      border: none;
+      color: #1a1a2e;
+      font-weight: bold;
+      padding: 0.8rem 2.5rem;
+      border-radius: 3rem;
+      cursor: pointer;
+      font-size: 1.5rem;
+      transition: 0.3s;
+      pointer-events: auto;
+      box-shadow: 0 0 40px #4ecca366;
+    }
+    #overlay-restart-btn:hover {
+      transform: scale(1.1);
+      background: #6fdfb8;
+      box-shadow: 0 0 60px #4ecca388;
+    }
+    #overlay-restart-btn:active {
+      transform: scale(0.95);
+    }
+  </style>
+</head>
+<body>
+  <div id="pause-overlay">
+    <div id="pause-text">Упс!</div>
+    <button id="overlay-restart-btn">Начать сначала!</button>
+  </div>
+  <div id="ui">
+    <div>❤️ <span id="lives">3</span></div>
+    <div>🔑 <span id="keys">0</span> / 5</div>
+    <div>🟢 <span id="state">patrol</span></div>
+    <div>⚡ <span class="boost-info" id="boost-charges">3</span></div>
+    <button id="restartBtn">⟳ Рестарт</button>
+  </div>
+  <canvas id="game" width="640" height="480"></canvas>
+  <p>WASD / стрелки — движение · ПРОБЕЛ — ускорение (3 заряда, 2 сек)</p>
+  <div id="msg"></div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const livesSpan = document.getElementById('lives');
+    const keysSpan = document.getElementById('keys');
+    const stateSpan = document.getElementById('state');
+    const msgDiv = document.getElementById('msg');
+    const pauseOverlay = document.getElementById('pause-overlay');
+    const pauseText = document.getElementById('pause-text');
+    const overlayRestartBtn = document.getElementById('overlay-restart-btn');
+    const boostChargesSpan = document.getElementById('boost-charges');
+
+    // ----- ЗВУКИ -----
+    const pickUpSound = new Audio('pick-up.ogg');
+    pickUpSound.load();
+
+    const boostSound = new Audio('war_rpg_f.ogg');
+    boostSound.load();
+
+    // ----- НАСТРОЙКИ ТЕКСТУР -----
+    const TEXTURE_SETTINGS = {
+      floor: {
+        scale: 0.5,
+        tileSize: null,
+      },
+      wall: {
+        scale: 0.6,
+        tileSize: null,
+      }
+    };
+
+    // ----- ЗАГРУЗКА ТЕКСТУР -----
+    const floorImage = new Image();
+    floorImage.src = 'floor.jpg';
+    let floorLoaded = false;
+    let floorPattern = null;
+
+    const wallImage = new Image();
+    wallImage.src = 'wall.jpg';
+    let wallLoaded = false;
+    let wallPattern = null;
+
+    function createScaledPattern(image, scale, tileSize) {
+      let w, h;
+      if (tileSize) {
+        w = tileSize;
+        h = tileSize;
+      } else {
+        w = image.width * scale;
+        h = image.height * scale;
+      }
+      
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(image, 0, 0, w, h);
+      
+      return ctx.createPattern(tempCanvas, 'repeat');
+    }
+
+    floorImage.onload = () => {
+      floorLoaded = true;
+      floorPattern = createScaledPattern(
+        floorImage,
+        TEXTURE_SETTINGS.floor.scale,
+        TEXTURE_SETTINGS.floor.tileSize
+      );
+    };
+    floorImage.onerror = () => {
+      console.warn('floor.jpg не найден, используется стандартный фон');
+    };
+
+    wallImage.onload = () => {
+      wallLoaded = true;
+      wallPattern = createScaledPattern(
+        wallImage,
+        TEXTURE_SETTINGS.wall.scale,
+        TEXTURE_SETTINGS.wall.tileSize
+      );
+    };
+    wallImage.onerror = () => {
+      console.warn('wall.jpg не найден, используется стандартный цвет');
+    };
+
+    // ----- СИСТЕМА ПАРТИКЛОВ -----
+    class Particle {
+      constructor(x, y, color, life, speed, size, type = 'spark') {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.life = life;
+        this.maxLife = life;
+        this.type = type;
+        this.size = size || 4;
+        this.speed = speed || 2;
+        this.angle = Math.random() * Math.PI * 2;
+        this.vx = Math.cos(this.angle) * this.speed * (0.5 + Math.random());
+        this.vy = Math.sin(this.angle) * this.speed * (0.5 + Math.random());
+        this.gravity = 0.05;
+        this.friction = 0.98;
+        this.alpha = 1;
+      }
+
+      update() {
+        this.life -= 1;
+        this.alpha = this.life / this.maxLife;
+        
+        if (this.type === 'spark') {
+          this.vx *= this.friction;
+          this.vy *= this.friction;
+          this.vy += this.gravity;
+          this.x += this.vx;
+          this.y += this.vy;
+          this.size *= 0.98;
+        } else if (this.type === 'trail') {
+          this.x += this.vx;
+          this.y += this.vy;
+          this.size *= 0.95;
+        }
+        
+        return this.life > 0 && this.size > 0.5;
+      }
+
+      draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = this.alpha * 0.8;
+        
+        if (this.type === 'spark') {
+          const gradient = ctx.createRadialGradient(
+            this.x, this.y, 0,
+            this.x, this.y, this.size * 2
+          );
+          gradient.addColorStop(0, this.color);
+          gradient.addColorStop(0.3, this.color);
+          gradient.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+          ctx.fill();
+          
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (this.type === 'trail') {
+          ctx.fillStyle = this.color;
+          ctx.shadowColor = this.color;
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        
+        ctx.restore();
+      }
+    }
+
+    let particles = [];
+
+    function createKeySpark(x, y) {
+      const colors = ['#f7d44a', '#ffd93d', '#ffaa00', '#ffdd77', '#ffffff'];
+      for (let i = 0; i < 25; i++) {
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const particle = new Particle(
+          x, y,
+          color,
+          30 + Math.random() * 20,
+          1.5 + Math.random() * 3,
+          2 + Math.random() * 4,
+          'spark'
+        );
+        particles.push(particle);
+      }
+    }
+
+    let boostTrailTimer = 0;
+    function createBoostTrail(x, y) {
+      const colors = ['#ffd93d', '#ffaa00', '#ffdd77', '#4ecca3'];
+      for (let i = 0; i < 3; i++) {
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const particle = new Particle(
+          x + (Math.random() - 0.5) * 10,
+          y + (Math.random() - 0.5) * 10,
+          color,
+          15 + Math.random() * 15,
+          0.5 + Math.random() * 1.5,
+          2 + Math.random() * 4,
+          'trail'
+        );
+        particle.vx = -(Math.random() - 0.5) * 2;
+        particle.vy = -(Math.random() - 0.5) * 2;
+        particles.push(particle);
+      }
+    }
+
+    // ----- ИГРОК -----
+    const player = {
+      x: 80, y: 80, w: 28, h: 28,
+      speed: 3.2,
+      color: '#4ecca3',
+      lives: 3,
+      keys: 0,
+      invincible: 0,
+      respawnTimer: 0,
+      respawning: false,
+      spawnScale: 1,
+      boostCharges: 3,
+      isBoosting: false,
+      boostTimer: 0,
+      boostDuration: 120,
+      boostSpeed: 6.5,
+      icon: '',
+      prevX: 0,
+      prevY: 0,
+    };
+
+    // ----- ПРЕПЯТСТВИЯ -----
+    const obstacles = [
+      { x: 280, y: 200, w: 120, h: 32 },
+      { x: 120, y: 320, w: 200, h: 6 },
+      { x: 480, y: 360, w: 40, h: 80 },
+      { x: 40, y: 120, w: 20, h: 80 },
+    ];
+
+    // ----- КЛЮЧИ -----
+    let keys = [];
+    function resetKeys() {
+      keys = [
+        { x: 180, y: 100, w: 24, h: 24, collected: false, icon: '' },
+        { x: 420, y: 160, w: 24, h: 24, collected: false, icon: '' },
+        { x: 560, y: 280, w: 24, h: 24, collected: false, icon: '' },
+        { x: 200, y: 400, w: 24, h: 24, collected: false, icon: '' },
+        { x: 380, y: 440, w: 24, h: 24, collected: false, icon: '' },
+      ];
+    }
+
+    // ----- ВЫХОД -----
+    const exitDoor = { x: 560, y: 24, w: 40, h: 40, color: '#f7d44a' };
+
+    // ----- ВРАГ -----
+    const enemy = {
+      x: 500, y: 80, w: 28, h: 28,
+      color: '#f5a623',
+      state: 'patrol',
+      patrolAngle: 0,
+      patrolRadius: 60,
+      centerX: 500, centerY: 140,
+      speed: 1.6,
+      chaseSpeed: 2.8,
+      attackTimer: 0,
+      attackCooldown: 0,
+      visionRadius: 190,
+      attackRange: 40,
+      icon: '',
+    };
+
+    // ----- ПАУЗА / СОСТОЯНИЕ ИГРЫ -----
+    let gamePaused = false;
+    let pauseTimer = 0;
+    let gameOver = false;
+    let gameWin = false;
+    let gameStarted = false;
+
+    // ----- КЛАВИШИ -----
+    const keysPressed = {};
+
+    // ----- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ -----
+    function rectsOverlap(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x &&
+             a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function dist(a, b) {
+      const dx = a.x + a.w/2 - (b.x + b.w/2);
+      const dy = a.y + a.h/2 - (b.y + b.h/2);
+      return Math.hypot(dx, dy);
+    }
+
+    function collidesWithObstacles(x, y, w, h) {
+      const test = { x, y, w, h };
+      for (const obs of obstacles) {
+        if (rectsOverlap(test, obs)) return true;
+      }
+      return false;
+    }
+
+    function tryMovePlayer(dx, dy) {
+      const newX = player.x + dx;
+      const newY = player.y + dy;
+      if (!collidesWithObstacles(newX, player.y, player.w, player.h)) {
+        player.x = newX;
+      } else {
+        if (!collidesWithObstacles(newX, player.y, player.w, player.h)) player.x = newX;
+      }
+      if (!collidesWithObstacles(player.x, newY, player.w, player.h)) {
+        player.y = newY;
+      } else {
+        if (!collidesWithObstacles(player.x, newY, player.w, player.h)) player.y = newY;
+      }
+      player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+    }
+
+    // ----- АКТИВАЦИЯ УСКОРЕНИЯ С ЗВУКОМ -----
+    function activateBoost() {
+      if (gameOver || !gameStarted || gamePaused) return;
+      if (player.boostCharges <= 0) return;
+      if (player.isBoosting) return;
+      
+      player.boostCharges -= 1;
+      player.isBoosting = true;
+      player.boostTimer = player.boostDuration;
+      boostChargesSpan.textContent = player.boostCharges;
+      player.color = '#6fdfb8';
+      
+      // Воспроизводим звук ускорения
+      try {
+        boostSound.currentTime = 0;
+        boostSound.play().catch(e => console.warn('Boost sound error:', e));
+      } catch (e) {
+        console.warn('Boost sound error:', e);
+      }
+    }
+
+    // ----- СПАВН ИГРОКА -----
+    function respawnPlayer(initialSpawn = false) {
+      let attempts = 0;
+      let placed = false;
+      let spawnX = 40, spawnY = 40;
+      while (!placed && attempts < 200) {
+        const x = 20 + Math.random() * (canvas.width - player.w - 40);
+        const y = 20 + Math.random() * (canvas.height - player.h - 40);
+        if (!collidesWithObstacles(x, y, player.w, player.h)) {
+          if (!rectsOverlap({x, y, w: player.w, h: player.h}, enemy)) {
+            if (!rectsOverlap({x, y, w: player.w, h: player.h}, exitDoor)) {
+              let onKey = false;
+              for (const k of keys) {
+                if (!k.collected && rectsOverlap({x, y, w: player.w, h: player.h}, k)) {
+                  onKey = true;
+                  break;
+                }
+              }
+              if (!onKey) {
+                spawnX = x;
+                spawnY = y;
+                placed = true;
+              }
+            }
+          }
+        }
+        attempts++;
+      }
+      
+      player.x = spawnX;
+      player.y = spawnY;
+      player.prevX = spawnX;
+      player.prevY = spawnY;
+      player.respawning = true;
+      player.respawnTimer = 60;
+      player.spawnScale = 0.1;
+      player.invincible = 60;
+      player.isBoosting = false;
+      player.boostTimer = 0;
+      player.color = '#4ecca3';
+      
+      if (initialSpawn) {
+        gameStarted = false;
+      }
+    }
+
+    // ----- ПОКАЗАТЬ ОВЕРЛЕЙ -----
+    function showOverlay(text, isWin = false) {
+      pauseOverlay.classList.add('show');
+      pauseText.textContent = text;
+      if (isWin) {
+        pauseText.className = 'win';
+      } else {
+        pauseText.className = '';
+      }
+      overlayRestartBtn.style.display = 'block';
+      gameOver = true;
+      gameWin = isWin;
+    }
+
+    // ----- ФУНКЦИЯ РЕСТАРТА -----
+    function restartGame() {
+      player.lives = 3;
+      player.keys = 0;
+      player.invincible = 0;
+      player.boostCharges = 3;
+      player.isBoosting = false;
+      player.boostTimer = 0;
+      player.color = '#4ecca3';
+      livesSpan.textContent = 3;
+      keysSpan.textContent = 0;
+      boostChargesSpan.textContent = 3;
+      msgDiv.textContent = '';
+      particles = [];
+
+      resetKeys();
+
+      enemy.x = 500;
+      enemy.y = 80;
+      enemy.state = 'patrol';
+      enemy.patrolAngle = 0;
+      enemy.centerX = 500;
+      enemy.centerY = 140;
+      enemy.attackTimer = 0;
+      enemy.attackCooldown = 0;
+      stateSpan.textContent = 'patrol';
+
+      gamePaused = false;
+      pauseTimer = 0;
+      gameOver = false;
+      gameWin = false;
+      gameStarted = false;
+      pauseOverlay.classList.remove('show');
+      overlayRestartBtn.style.display = 'none';
+
+      for (let key in keysPressed) keysPressed[key] = false;
+      
+      respawnPlayer(true);
+    }
+
+    // ----- ОБНОВЛЕНИЕ -----
+    function update() {
+      if (gameOver) return;
+
+      if (!gameStarted) {
+        if (player.respawning) {
+          player.respawnTimer -= 1;
+          const progress = 1 - (player.respawnTimer / 60);
+          player.spawnScale = 0.1 + progress * 0.9;
+          
+          if (player.respawnTimer <= 0) {
+            player.respawning = false;
+            player.spawnScale = 1;
+            player.invincible = 30;
+            gameStarted = true;
+          }
+        }
+        particles = particles.filter(p => p.update());
+        return;
+      }
+
+      if (gamePaused) {
+        pauseTimer -= 1;
+        if (pauseTimer <= 0) {
+          gamePaused = false;
+          pauseOverlay.classList.remove('show');
+          const distToPlayer = dist(enemy, player);
+          const playerInVision = distToPlayer < enemy.visionRadius;
+          if (player.lives > 0) {
+            enemy.state = playerInVision ? 'chase' : 'patrol';
+            stateSpan.textContent = enemy.state;
+          }
+        }
+        particles = particles.filter(p => p.update());
+        return;
+      }
+
+      if (player.respawning) {
+        player.respawnTimer -= 1;
+        const progress = 1 - (player.respawnTimer / 60);
+        player.spawnScale = 0.1 + progress * 0.9;
+        
+        if (player.respawnTimer <= 0) {
+          player.respawning = false;
+          player.spawnScale = 1;
+          player.invincible = 30;
+          player.color = '#4ecca3';
+        }
+        particles = particles.filter(p => p.update());
+        return;
+      }
+
+      player.prevX = player.x;
+      player.prevY = player.y;
+
+      if (player.isBoosting) {
+        player.boostTimer -= 1;
+        if (player.boostTimer <= 0) {
+          player.isBoosting = false;
+          player.color = '#4ecca3';
+        }
+      }
+
+      let dx = 0, dy = 0;
+      if (keysPressed['ArrowLeft'] || keysPressed['KeyA']) dx -= 1;
+      if (keysPressed['ArrowRight'] || keysPressed['KeyD']) dx += 1;
+      if (keysPressed['ArrowUp'] || keysPressed['KeyW']) dy -= 1;
+      if (keysPressed['ArrowDown'] || keysPressed['KeyS']) dy += 1;
+      if (dx !== 0 && dy !== 0) {
+        dx *= 0.707;
+        dy *= 0.707;
+      }
+      
+      const currentSpeed = player.isBoosting ? player.boostSpeed : player.speed;
+      if (dx !== 0 || dy !== 0) {
+        tryMovePlayer(dx * currentSpeed, dy * currentSpeed);
+        
+        if (player.isBoosting) {
+          boostTrailTimer += 1;
+          if (boostTrailTimer % 2 === 0) {
+            createBoostTrail(
+              player.x + player.w/2,
+              player.y + player.h/2
+            );
+          }
+        }
+      } else {
+        boostTrailTimer = 0;
+      }
+
+      // ---- Сбор ключей с ЗВУКОМ и искрами ----
+      for (const k of keys) {
+        if (!k.collected && rectsOverlap(player, k)) {
+          k.collected = true;
+          player.keys += 1;
+          keysSpan.textContent = player.keys;
+          
+          // Воспроизводим звук сбора ключа
+          try {
+            pickUpSound.currentTime = 0;
+            pickUpSound.play().catch(e => console.warn('Sound play error:', e));
+          } catch (e) {
+            console.warn('Sound error:', e);
+          }
+          
+          createKeySpark(k.x + k.w/2, k.y + k.h/2);
+        }
+      }
+
+      if (player.keys >= 5 && rectsOverlap(player, exitDoor)) {
+        for (let i = 0; i < 50; i++) {
+          createKeySpark(
+            exitDoor.x + exitDoor.w/2 + (Math.random() - 0.5) * 60,
+            exitDoor.y + exitDoor.h/2 + (Math.random() - 0.5) * 60
+          );
+        }
+        showOverlay('🏆 Победа!', true);
+        particles = particles.filter(p => p.update());
+        return;
+      }
+
+      const distToPlayer = dist(enemy, player);
+      const playerInVision = distToPlayer < enemy.visionRadius;
+
+      if (enemy.attackCooldown > 0) enemy.attackCooldown -= 1;
+
+      if (enemy.attackTimer > 0) {
+        enemy.attackTimer -= 1;
+        if (enemy.attackTimer === 0) {
+          if (distToPlayer < enemy.attackRange && player.invincible === 0 && player.lives > 0) {
+            player.lives -= 1;
+            livesSpan.textContent = player.lives;
+            
+            if (player.lives <= 0) {
+              showOverlay('💀 Вы проиграли!', false);
+              particles = particles.filter(p => p.update());
+              return;
+            } else {
+              gamePaused = true;
+              pauseTimer = 60;
+              pauseOverlay.classList.add('show');
+              pauseText.textContent = 'Упс!';
+              pauseText.className = '';
+              overlayRestartBtn.style.display = 'none';
+              respawnPlayer(false);
+              enemy.state = 'patrol';
+              stateSpan.textContent = 'patrol';
+              enemy.attackTimer = 0;
+              particles = particles.filter(p => p.update());
+              return;
+            }
+          }
+          if (player.lives > 0) {
+            if (playerInVision) {
+              enemy.state = 'chase';
+              stateSpan.textContent = 'chase';
+            } else {
+              enemy.state = 'patrol';
+              stateSpan.textContent = 'patrol';
+            }
+          }
+        }
+        particles = particles.filter(p => p.update());
+        return;
+      }
+
+      if (player.lives <= 0) {
+        showOverlay('💀 Вы проиграли!', false);
+        particles = particles.filter(p => p.update());
+        return;
+      }
+
+      if (enemy.state === 'patrol') {
+        stateSpan.textContent = 'patrol';
+        enemy.patrolAngle += 0.025;
+        const cx = enemy.centerX, cy = enemy.centerY, r = enemy.patrolRadius;
+        enemy.x = cx + Math.cos(enemy.patrolAngle) * r - enemy.w/2;
+        enemy.y = cy + Math.sin(enemy.patrolAngle) * r - enemy.h/2;
+        if (playerInVision) {
+          enemy.state = 'chase';
+          stateSpan.textContent = 'chase';
+        }
+      } 
+      else if (enemy.state === 'chase') {
+        stateSpan.textContent = 'chase';
+        const dx = (player.x + player.w/2) - (enemy.x + enemy.w/2);
+        const dy = (player.y + player.h/2) - (enemy.y + enemy.h/2);
+        const len = Math.hypot(dx, dy);
+        if (len > 1) {
+          const step = Math.min(enemy.chaseSpeed, len);
+          const moveX = (dx / len) * step;
+          const moveY = (dy / len) * step;
+          const newX = enemy.x + moveX;
+          const newY = enemy.y + moveY;
+          if (!collidesWithObstacles(newX, enemy.y, enemy.w, enemy.h)) {
+            enemy.x = newX;
+          } else {
+            if (!collidesWithObstacles(newX, enemy.y, enemy.w, enemy.h)) enemy.x = newX;
+          }
+          if (!collidesWithObstacles(enemy.x, newY, enemy.w, enemy.h)) {
+            enemy.y = newY;
+          } else {
+            if (!collidesWithObstacles(enemy.x, newY, enemy.w, enemy.h)) enemy.y = newY;
+          }
+          enemy.x = Math.max(0, Math.min(canvas.width - enemy.w, enemy.x));
+          enemy.y = Math.max(0, Math.min(canvas.height - enemy.h, enemy.y));
+        }
+
+        if (!playerInVision) {
+          enemy.state = 'patrol';
+          enemy.centerX = enemy.x + enemy.w/2;
+          enemy.centerY = enemy.y + enemy.h/2;
+          enemy.patrolAngle = 0;
+          stateSpan.textContent = 'patrol';
+        }
+        if (distToPlayer < enemy.attackRange && enemy.attackCooldown === 0 && player.invincible === 0 && player.lives > 0) {
+          enemy.state = 'attack';
+          enemy.attackTimer = 30;
+          enemy.attackCooldown = 20;
+          stateSpan.textContent = 'attack';
+        }
+      }
+
+      if (player.invincible > 0) player.invincible -= 1;
+
+      if (player.lives <= 0) {
+        showOverlay('💀 Вы проиграли!', false);
+      }
+
+      particles = particles.filter(p => p.update());
+    }
+
+    // ----- ОТРИСОВКА -----
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (floorPattern) {
+        ctx.fillStyle = floorPattern;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (floorLoaded) {
+        ctx.drawImage(floorImage, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#16213e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (wallPattern) {
+        ctx.fillStyle = wallPattern;
+        for (const obs of obstacles) {
+          ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+        }
+      } else if (wallLoaded) {
+        for (const obs of obstacles) {
+          ctx.drawImage(wallImage, obs.x, obs.y, obs.w, obs.h);
+        }
+      } else {
+        for (const obs of obstacles) {
+          ctx.fillStyle = '#e94560';
+          ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+        }
+      }
+
+      for (const k of keys) {
+        if (!k.collected) {
+          ctx.fillStyle = '#f7d44a';
+          ctx.font = '24px FontAwesome';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(k.icon, k.x + k.w/2, k.y + k.h/2 + 1);
+        }
+      }
+
+      ctx.fillStyle = exitDoor.color;
+      ctx.fillRect(exitDoor.x, exitDoor.y, exitDoor.w, exitDoor.h);
+      ctx.fillStyle = '#1a1a2e';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🚪', exitDoor.x + exitDoor.w/2, exitDoor.y + exitDoor.h/2 + 1);
+
+      for (const p of particles) {
+        p.draw(ctx);
+      }
+
+      if (player.respawning) {
+        const cx = player.x + player.w/2;
+        const cy = player.y + player.h/2;
+        const progress = 1 - (player.respawnTimer / 60);
+        const radius = 20 + progress * 40;
+        
+        for (let i = 0; i < 3; i++) {
+          const offset = (i / 3) * progress * 60;
+          const alpha = 0.5 - (progress * 0.4);
+          ctx.strokeStyle = `rgba(78, 236, 163, ${alpha})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius + offset, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        ctx.fillStyle = `rgba(78, 236, 163, ${0.2 + progress * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const scale = player.spawnScale;
+        const w = player.w * scale;
+        const h = player.h * scale;
+        const x = player.x + (player.w - w) / 2;
+        const y = player.y + (player.h - h) / 2;
+        
+        ctx.fillStyle = '#4ecca3';
+        ctx.font = `${w}px FontAwesome`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(player.icon, x + w/2, y + h/2 + 1);
+        
+        ctx.strokeStyle = '#4ecca388';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+      } else {
+        if (player.isBoosting) {
+          ctx.shadowColor = '#ffd93d';
+          ctx.shadowBlur = 20;
+        }
+        
+        if (player.invincible > 0 && Math.floor(Date.now() / 120) % 2 === 0) {
+          ctx.fillStyle = '#aaffdd';
+        } else {
+          ctx.fillStyle = player.color;
+        }
+        ctx.font = `${player.w}px FontAwesome`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(player.icon, player.x + player.w/2, player.y + player.h/2 + 1);
+        ctx.shadowBlur = 0;
+        
+        ctx.strokeStyle = '#4ecca388';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(player.x, player.y, player.w, player.h);
+      }
+
+      ctx.fillStyle = enemy.color;
+      ctx.font = `${enemy.w}px FontAwesome`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(enemy.icon, enemy.x + enemy.w/2, enemy.y + enemy.h/2 + 1);
+      
+      ctx.strokeStyle = '#f5a62388';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(enemy.x, enemy.y, enemy.w, enemy.h);
+
+      if (enemy.state === 'chase' || enemy.state === 'attack') {
+        ctx.strokeStyle = '#f5a62333';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(enemy.x + enemy.w/2, enemy.y + enemy.h/2, enemy.visionRadius, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      if (player.isBoosting) {
+        ctx.fillStyle = '#ffd93d';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('⚡ BOOST', 12, 12);
+      }
+    }
+
+    // ----- ЦИКЛ -----
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ----- УПРАВЛЕНИЕ -----
+    window.addEventListener('keydown', (e) => {
+      if (gameOver || !gameStarted) {
+        if (e.code === 'Space') e.preventDefault();
+        return;
+      }
+      
+      if (e.code === 'Space') {
+        e.preventDefault();
+        activateBoost();
+        return;
+      }
+      
+      keysPressed[e.code] = true;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      keysPressed[e.code] = false;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
+        e.preventDefault();
+      }
+    });
+
+    // ----- КНОПКИ РЕСТАРТА -----
+    document.getElementById('restartBtn').addEventListener('click', restartGame);
+    overlayRestartBtn.addEventListener('click', restartGame);
+
+    // ----- СТАРТ -----
+    resetKeys();
+    overlayRestartBtn.style.display = 'none';
+    respawnPlayer(true);
+    gameLoop();
+  </script>
+</body>
+</html>
