@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Мир из двух экранов + Дождь + Звуки</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+        }
+        .container {
+            background: #2a2a2a;
+            padding: 30px 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 8px;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.6);
+        }
+        .controls {
+            color: #aaa;
+            text-align: center;
+            margin-top: 18px;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+        }
+        .controls span {
+            color: #6ecbf5;
+            font-weight: bold;
+            padding: 4px 12px;
+            background: #3a3a3a;
+            border-radius: 4px;
+            margin: 0 4px;
+        }
+        .hint {
+            color: #666;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+        .info {
+            color: #ffd93d;
+            text-align: center;
+            margin-top: 8px;
+            font-size: 14px;
+            background: #3a3a3a;
+            padding: 6px 16px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-left: auto;
+            margin-right: auto;
+            width: auto;
+        }
+        .center {
+            text-align: center;
+        }
+        .loading {
+            color: #6ecbf5;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 13px;
+            display: none;
+        }
+        .sound-toggle {
+            color: #888;
+            text-align: center;
+            margin-top: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .sound-toggle:hover {
+            color: #6ecbf5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div class="center">
+        <div class="info" id="levelInfo">🌍 Уровень 1 / 2</div>
+    </div>
+    <div class="controls">
+        <span>←</span> <span>→</span> — ходьба &nbsp;|&nbsp; <span>Пробел</span> или <span>↑</span> — прыжок
+    </div>
+    <div class="hint">🌧️ дойдите до края экрана для перехода | кликните по 🔈 для звука</div>
+    <div class="sound-toggle" id="soundToggle">🔈 Звук: ВКЛ</div>
+    <div class="loading" id="loadingStatus">Загрузка...</div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const loadingStatus = document.getElementById('loadingStatus');
+        const levelInfo = document.getElementById('levelInfo');
+        const soundToggle = document.getElementById('soundToggle');
+
+        // ===== НАСТРОЙКИ =====
+        const SPRITE_SRC = 'chel.png';
+        const BG1_SRC = 'bg.jpg';
+        const BG2_SRC = 'bg2.jpg';
+        const FRONT_SRC = 'front.png';
+        
+        const SHEET_WIDTH = 624;
+        const SHEET_HEIGHT = 151;
+        const FRAME_COUNT = 6;
+        const ANIMATION_SPEED = 120;
+        const MOVE_SPEED = 3;
+        const SCALE = 1;
+        const JUMP_FRAME_INDEX = 2;
+        const GRAVITY = 0.6;
+        const JUMP_SPEED = -10;
+
+        const FRAME_WIDTH = SHEET_WIDTH / FRAME_COUNT;
+        const FRAME_HEIGHT = SHEET_HEIGHT;
+
+        // ===== НАСТРОЙКИ ДОЖДЯ =====
+        const RAIN_COUNT = 200;
+        const RAIN_SPEED = 8;
+        const RAIN_LENGTH = 20;
+        const RAIN_WIDTH = 1.5;
+        const RAIN_ANGLE = 0.3;
+        const RAIN_OPACITY = 0.4;
+
+        // ===== ЗАГРУЗКА ВСЕХ ИЗОБРАЖЕНИЙ =====
+        let imagesLoaded = 0;
+        const totalImages = 4;
+
+        let sprite = new Image();
+        let bg1 = new Image();
+        let bg2 = new Image();
+        let front = new Image();
+
+        // ===== СОСТОЯНИЕ =====
+        let currentFrame = 0;
+        let lastFrameTime = 0;
+
+        let posX = 50;
+        let posY = canvas.height - FRAME_HEIGHT * SCALE / 2 - 5;
+        const GROUND_Y = canvas.height - FRAME_HEIGHT * SCALE / 2 - 5;
+
+        let direction = 1;
+        let isMoving = false;
+        let isJumping = false;
+        let jumpVelocity = 0;
+
+        let currentLevel = 0;
+        const TOTAL_LEVELS = 2;
+
+        let keys = {
+            left: false,
+            right: false,
+            space: false,
+            up: false
+        };
+
+        let allLoaded = false;
+
+        // ===== ПЕРЕХОД МЕЖДУ УРОВНЯМИ =====
+        let isTransitioning = false;
+        let transitionProgress = 0;
+        let transitionDirection = 0; // 1 = вправо, -1 = влево
+        let transitionTargetLevel = 0;
+        let transitionStartX = 0;
+        let transitionTargetX = 0;
+
+        // ===== СИСТЕМА ДОЖДЯ =====
+        let raindrops = [];
+
+        function initRain() {
+            raindrops = [];
+            for (let i = 0; i < RAIN_COUNT; i++) {
+                raindrops.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    speed: RAIN_SPEED * (0.7 + Math.random() * 0.6),
+                    length: RAIN_LENGTH * (0.7 + Math.random() * 0.6),
+                    width: RAIN_WIDTH * (0.5 + Math.random() * 0.5),
+                    opacity: RAIN_OPACITY * (0.6 + Math.random() * 0.4)
+                });
+            }
+        }
+
+        function updateRain() {
+            for (let drop of raindrops) {
+                drop.x += Math.sin(RAIN_ANGLE) * drop.speed * 0.3;
+                drop.y += drop.speed;
+                
+                if (drop.y > canvas.height) {
+                    drop.y = -drop.length;
+                    drop.x = Math.random() * canvas.width;
+                }
+                if (drop.x > canvas.width) drop.x = 0;
+                if (drop.x < 0) drop.x = canvas.width;
+            }
+        }
+
+        function drawRain() {
+            ctx.save();
+            for (let drop of raindrops) {
+                ctx.beginPath();
+                ctx.moveTo(drop.x, drop.y);
+                ctx.lineTo(
+                    drop.x - Math.sin(RAIN_ANGLE) * drop.length,
+                    drop.y - Math.cos(RAIN_ANGLE) * drop.length
+                );
+                ctx.strokeStyle = `rgba(180, 200, 255, ${drop.opacity})`;
+                ctx.lineWidth = drop.width;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, 'rgba(100, 150, 255, 0.03)');
+            gradient.addColorStop(0.5, 'rgba(100, 150, 255, 0.02)');
+            gradient.addColorStop(1, 'rgba(100, 150, 255, 0.05)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+        }
+
+        // ===== ЗВУКИ =====
+        let soundEnabled = true;
+        let audioContext = null;
+
+        function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.log('Web Audio API не поддерживается');
+                soundEnabled = false;
+            }
+        }
+
+        function playTone(frequency, duration, volume, type = 'sine') {
+            if (!soundEnabled || !audioContext) return;
+            
+            try {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.type = type;
+                oscillator.frequency.value = frequency;
+                
+                gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + duration);
+            } catch (e) {
+                // Игнорируем ошибки звука
+            }
+        }
+
+        function playJumpSound() {
+            playTone(500, 0.15, 0.15, 'sine');
+            setTimeout(() => playTone(700, 0.1, 0.1, 'sine'), 50);
+        }
+
+        function playLandSound() {
+            playTone(200, 0.1, 0.1, 'sine');
+        }
+
+        function playStepSound() {
+            playTone(100, 0.05, 0.05, 'square');
+        }
+
+        function playTransitionSound() {
+            playTone(400, 0.2, 0.15, 'sine');
+            setTimeout(() => playTone(600, 0.2, 0.15, 'sine'), 100);
+            setTimeout(() => playTone(800, 0.3, 0.2, 'sine'), 200);
+        }
+
+        let stepCounter = 0;
+
+        // ===== ФУНКЦИЯ ЗАГРУЗКИ =====
+        function checkAllLoaded() {
+            imagesLoaded++;
+            loadingStatus.textContent = `Загрузка... ${imagesLoaded}/${totalImages}`;
+            
+            if (imagesLoaded === totalImages) {
+                allLoaded = true;
+                loadingStatus.style.display = 'none';
+                console.log('✅ Все изображения загружены!');
+                initRain();
+                initAudio();
+                updateLevelInfo();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // ===== ЗАГРУЗКА ИЗОБРАЖЕНИЙ =====
+        sprite.src = SPRITE_SRC;
+        sprite.onload = checkAllLoaded;
+        sprite.onerror = () => {
+            console.error('❌ Не удалось загрузить chel.png');
+            checkAllLoaded();
+        };
+
+        bg1.src = BG1_SRC;
+        bg1.onload = checkAllLoaded;
+        bg1.onerror = () => {
+            console.error('❌ Не удалось загрузить bg.jpg');
+            checkAllLoaded();
+        };
+
+        bg2.src = BG2_SRC;
+        bg2.onload = checkAllLoaded;
+        bg2.onerror = () => {
+            console.error('❌ Не удалось загрузить bg2.jpg');
+            checkAllLoaded();
+        };
+
+        front.src = FRONT_SRC;
+        front.onload = checkAllLoaded;
+        front.onerror = () => {
+            console.error('❌ Не удалось загрузить front.png');
+            checkAllLoaded();
+        };
+
+        loadingStatus.style.display = 'block';
+        loadingStatus.textContent = 'Загрузка... 0/4';
+
+        // ===== УПРАВЛЕНИЕ =====
+        document.addEventListener('keydown', (e) => {
+            if (isTransitioning) return;
+            
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                keys.left = true;
+                direction = -1;
+                if (!isJumping) isMoving = true;
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                keys.right = true;
+                direction = 1;
+                if (!isJumping) isMoving = true;
+            }
+            
+            if (e.key === ' ' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (e.key === ' ') {
+                    keys.space = true;
+                } else if (e.key === 'ArrowUp') {
+                    keys.up = true;
+                }
+                
+                if (!isJumping && !isTransitioning) {
+                    startJump();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                keys.left = false;
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                keys.right = false;
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                keys.space = false;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                keys.up = false;
+            }
+
+            if (!isJumping && !isTransitioning) {
+                if (!keys.left && !keys.right) {
+                    isMoving = false;
+                    currentFrame = 0;
+                } else {
+                    isMoving = true;
+                }
+            }
+        });
+
+        // ===== ЗВУКОВОЙ ПЕРЕКЛЮЧАТЕЛЬ =====
+        soundToggle.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            soundToggle.textContent = soundEnabled ? '🔈 Звук: ВКЛ' : '🔇 Звук: ВЫКЛ';
+            if (soundEnabled && !audioContext) {
+                initAudio();
+            }
+        });
+
+        // ===== ФУНКЦИЯ ПРЫЖКА =====
+        function startJump() {
+            if (isJumping || isTransitioning) return;
+            isJumping = true;
+            jumpVelocity = JUMP_SPEED;
+            currentFrame = JUMP_FRAME_INDEX;
+            playJumpSound();
+            console.log('🦘 Прыжок!');
+        }
+
+        // ===== ПЕРЕКЛЮЧЕНИЕ УРОВНЕЙ =====
+        function switchLevel(direction) {
+            const newLevel = currentLevel + direction;
+            
+            if (newLevel < 0 || newLevel >= TOTAL_LEVELS) {
+                return false;
+            }
+            
+            // Начинаем переход
+            isTransitioning = true;
+            transitionProgress = 0;
+            transitionDirection = direction;
+            transitionTargetLevel = newLevel;
+            transitionStartX = posX;
+            
+            if (direction === 1) {
+                transitionTargetX = FRAME_WIDTH * SCALE / 2 + 10;
+            } else {
+                transitionTargetX = canvas.width - FRAME_WIDTH * SCALE / 2 - 10;
+            }
+            
+            playTransitionSound();
+            console.log(`🌍 Начинаем переход на уровень ${newLevel + 1}`);
+            return true;
+        }
+
+        function updateTransition() {
+            if (!isTransitioning) return;
+            
+            transitionProgress += 0.025; // скорость перехода
+            
+            if (transitionProgress >= 1) {
+                transitionProgress = 1;
+                // Завершаем переход
+                currentLevel = transitionTargetLevel;
+                posX = transitionTargetX;
+                posY = GROUND_Y;
+                isJumping = false;
+                jumpVelocity = 0;
+                isMoving = false;
+                currentFrame = 0;
+                isTransitioning = false;
+                updateLevelInfo();
+                console.log(`🌍 Переход завершен! Уровень ${currentLevel + 1}`);
+            }
+        }
+
+        function updateLevelInfo() {
+            levelInfo.textContent = `🌍 Уровень ${currentLevel + 1} / ${TOTAL_LEVELS}`;
+        }
+
+        // ===== ИГРОВОЙ ЦИКЛ =====
+        function gameLoop(timestamp) {
+            if (!allLoaded) {
+                renderFallback();
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            update(timestamp);
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(timestamp) {
+            // === ОБНОВЛЕНИЕ ПЕРЕХОДА ===
+            if (isTransitioning) {
+                updateTransition();
+                // Во время перехода не обновляем остальное
+                updateRain();
+                return;
+            }
+
+            // === ДВИЖЕНИЕ ===
+            let moved = false;
+            
+            if (keys.left) {
+                posX -= MOVE_SPEED;
+                moved = true;
+                
+                if (posX < FRAME_WIDTH * SCALE / 2) {
+                    if (currentLevel > 0) {
+                        switchLevel(-1);
+                        return;
+                    } else {
+                        posX = FRAME_WIDTH * SCALE / 2;
+                    }
+                }
+                
+                if (!isJumping) isMoving = true;
+            }
+            
+            if (keys.right) {
+                posX += MOVE_SPEED;
+                moved = true;
+                
+                if (posX > canvas.width - FRAME_WIDTH * SCALE / 2) {
+                    if (currentLevel < TOTAL_LEVELS - 1) {
+                        switchLevel(1);
+                        return;
+                    } else {
+                        posX = canvas.width - FRAME_WIDTH * SCALE / 2;
+                    }
+                }
+                
+                if (!isJumping) isMoving = true;
+            }
+            
+            // Звук шагов
+            if (moved && !isJumping && isMoving) {
+                stepCounter++;
+                if (stepCounter % 6 === 0) {
+                    playStepSound();
+                }
+            }
+            
+            if (!keys.left && !keys.right) {
+                if (!isJumping) {
+                    isMoving = false;
+                }
+            }
+
+            // === ФИЗИКА ПРЫЖКА ===
+            if (isJumping) {
+                jumpVelocity += GRAVITY;
+                posY += jumpVelocity;
+
+                if (posY >= GROUND_Y) {
+                    posY = GROUND_Y;
+                    isJumping = false;
+                    jumpVelocity = 0;
+                    playLandSound();
+                    if (keys.left || keys.right) {
+                        isMoving = true;
+                    } else {
+                        isMoving = false;
+                        currentFrame = 0;
+                    }
+                    console.log('🦘 Приземлились!');
+                }
+            }
+
+            // === АНИМАЦИЯ ===
+            if (!isJumping) {
+                if (isMoving) {
+                    if (timestamp - lastFrameTime > ANIMATION_SPEED) {
+                        currentFrame = (currentFrame + 1) % FRAME_COUNT;
+                        lastFrameTime = timestamp;
+                    }
+                } else {
+                    currentFrame = 0;
+                }
+            } else {
+                currentFrame = JUMP_FRAME_INDEX;
+            }
+
+            // === ОБНОВЛЕНИЕ ДОЖДЯ ===
+            updateRain();
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // ===== 1. ФОН =====
+            let currentBg = currentLevel === 0 ? bg1 : bg2;
+            let nextBg = currentLevel === 0 ? bg2 : bg1;
+            
+            if (isTransitioning) {
+                // Плавный переход
+                const progress = transitionProgress;
+                const easeProgress = progress < 0.5 ? 
+                    2 * progress * progress : 
+                    -1 + (4 - 2 * progress) * progress;
+                
+                // Рисуем текущий фон с затуханием
+                ctx.save();
+                ctx.globalAlpha = 1 - easeProgress;
+                if (currentBg.complete && currentBg.naturalWidth) {
+                    ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
+                }
+                ctx.restore();
+                
+                // Рисуем новый фон с появлением
+                ctx.save();
+                ctx.globalAlpha = easeProgress;
+                if (nextBg.complete && nextBg.naturalWidth) {
+                    ctx.drawImage(nextBg, 0, 0, canvas.width, canvas.height);
+                }
+                ctx.restore();
+                
+                // Затемнение
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.3 * Math.sin(progress * Math.PI)})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+            } else {
+                // Обычный рендер
+                if (currentBg.complete && currentBg.naturalWidth) {
+                    ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
+                } else {
+                    ctx.fillStyle = currentLevel === 0 ? '#2d2d2d' : '#1a2a3a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#666';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Фон ${currentLevel + 1}`, canvas.width/2, 30);
+                }
+            }
+
+            // ===== 2. ДОЖДЬ =====
+            if (!isTransitioning || transitionProgress > 0.2) {
+                drawRain();
+            }
+
+            // ===== 3. ПЕРСОНАЖ =====
+            if (sprite.complete && sprite.naturalWidth) {
+                const srcX = currentFrame * FRAME_WIDTH;
+                const srcY = 0;
+                const drawW = FRAME_WIDTH * SCALE;
+                const drawH = FRAME_HEIGHT * SCALE;
+
+                ctx.save();
+                
+                if (isTransitioning) {
+                    // Анимируем позицию персонажа во время перехода
+                    const progress = transitionProgress;
+                    const easeProgress = progress < 0.5 ? 
+                        2 * progress * progress : 
+                        -1 + (4 - 2 * progress) * progress;
+                    
+                    const currentX = transitionStartX + (transitionTargetX - transitionStartX) * easeProgress;
+                    ctx.translate(currentX, posY);
+                } else {
+                    ctx.translate(posX, posY);
+                }
+
+                if (direction === -1) {
+                    ctx.scale(-1, 1);
+                }
+
+                ctx.drawImage(
+                    sprite,
+                    srcX, srcY, FRAME_WIDTH, FRAME_HEIGHT,
+                    -drawW / 2, -drawH,
+                    drawW, drawH
+                );
+
+                ctx.restore();
+            } else {
+                ctx.fillStyle = '#ff6b6b';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('chel.png', posX, posY);
+            }
+
+            // ===== 4. ПЕРЕДНИЙ ПЛАН =====
+            if (front.complete && front.naturalWidth) {
+                ctx.drawImage(front, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#666';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Передний план (front.png)', canvas.width/2, canvas.height - 10);
+            }
+
+            // ===== 5. ИНДИКАТОРЫ =====
+            if (!isTransitioning) {
+                // Правая сторона
+                if (currentLevel < TOTAL_LEVELS - 1) {
+                    ctx.fillStyle = 'rgba(100, 200, 255, 0.2)';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'right';
+                    ctx.fillText('▶ переход →', canvas.width - 20, 50);
+                    
+                    if (Math.floor(Date.now() / 500) % 2 === 0) {
+                        ctx.fillStyle = 'rgba(100, 200, 255, 0.3)';
+                        ctx.font = '30px sans-serif';
+                        ctx.fillText('▶', canvas.width - 30, 80);
+                    }
+                }
+                
+                // Левая сторона
+                if (currentLevel > 0) {
+                    ctx.fillStyle = 'rgba(100, 200, 255, 0.2)';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('← переход ◀', 20, 50);
+                    
+                    if (Math.floor(Date.now() / 500) % 2 === 0) {
+                        ctx.fillStyle = 'rgba(100, 200, 255, 0.3)';
+                        ctx.font = '30px sans-serif';
+                        ctx.fillText('◀', 30, 80);
+                    }
+                }
+            }
+
+            // Отладка
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.font = '12px monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(`кадр ${currentFrame+1}/${FRAME_COUNT}`, 12, 22);
+            ctx.fillText(`позиция: ${Math.round(posX)}, ${Math.round(posY)}`, 12, 40);
+            ctx.fillText(`состояние: ${isJumping ? 'ПРЫЖОК 🦘' : (isMoving ? 'ходьба' : 'стоя')}`, 12, 58);
+            ctx.fillText(`уровень: ${currentLevel + 1}/${TOTAL_LEVELS}`, 12, 76);
+            
+            if (isTransitioning) {
+                ctx.fillStyle = 'rgba(255, 200, 50, 0.5)';
+                ctx.fillText(`🔄 ПЕРЕХОД ${Math.round(transitionProgress * 100)}%`, 12, 94);
+            } else if (isJumping && (keys.left || keys.right)) {
+                ctx.fillStyle = 'rgba(255, 200, 50, 0.3)';
+                ctx.fillText('▶ движение во время прыжка', 12, 94);
+            }
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('Пробел / ↑', canvas.width - 12, 22);
+            ctx.fillText(`🌧️ ${RAIN_COUNT}`, canvas.width - 12, 40);
+        }
+
+        function renderFallback() {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#6ecbf5';
+            ctx.font = '20px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Загрузка изображений...', canvas.width/2, canvas.height/2 - 10);
+            ctx.fillStyle = '#888';
+            ctx.font = '14px sans-serif';
+            ctx.fillText(`Загружено: ${imagesLoaded}/${totalImages}`, canvas.width/2, canvas.height/2 + 30);
+            
+            ctx.fillStyle = '#666';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('bg.jpg, bg2.png, chel.png, front.png', canvas.width/2, canvas.height/2 + 60);
+        }
+
+        // Запуск если уже загружено
+        if (sprite.complete && bg1.complete && bg2.complete && front.complete) {
+            allLoaded = true;
+            loadingStatus.style.display = 'none';
+            initRain();
+            initAudio();
+            updateLevelInfo();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Клик по canvas для активации аудио
+        canvas.addEventListener('click', () => {
+            if (!audioContext) {
+                initAudio();
+            }
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        });
+
+    })();
+</script>
+</body>
+</html>
