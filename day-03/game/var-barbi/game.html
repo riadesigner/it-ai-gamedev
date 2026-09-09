@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Мир из двух экранов + Дождь + Звуки (плавное движение)</title>
+    <title>Мир из двух экранов + Дождь + Звуки</title>
     <style>
         * {
             margin: 0;
@@ -85,13 +85,6 @@
         .sound-toggle:hover {
             color: #6ecbf5;
         }
-        .fps {
-            color: #555;
-            text-align: center;
-            margin-top: 5px;
-            font-size: 11px;
-            font-family: monospace;
-        }
     </style>
 </head>
 <body>
@@ -106,7 +99,6 @@
     </div>
     <div class="hint">🌧️ дойдите до края экрана для перехода | кликните по 🔈 для звука</div>
     <div class="sound-toggle" id="soundToggle">🔈 Звук: ВКЛ</div>
-    <div class="fps" id="fpsDisplay">FPS: 60</div>
     <div class="loading" id="loadingStatus">Загрузка...</div>
 </div>
 
@@ -117,7 +109,6 @@
         const loadingStatus = document.getElementById('loadingStatus');
         const levelInfo = document.getElementById('levelInfo');
         const soundToggle = document.getElementById('soundToggle');
-        const fpsDisplay = document.getElementById('fpsDisplay');
 
         // ===== НАСТРОЙКИ =====
         const SPRITE_SRC = 'chel.png';
@@ -128,12 +119,12 @@
         const SHEET_WIDTH = 624;
         const SHEET_HEIGHT = 151;
         const FRAME_COUNT = 6;
-        const ANIMATION_SPEED = 120; // мс между кадрами
-        const MOVE_SPEED = 200; // пикселей в секунду (было 3px/кадр)
+        const ANIMATION_SPEED = 120;
+        const MOVE_SPEED = 3;
         const SCALE = 1;
         const JUMP_FRAME_INDEX = 2;
-        const GRAVITY = 600; // пикселей/сек² (было 0.6)
-        const JUMP_SPEED = -400; // пикселей/сек (было -10)
+        const GRAVITY = 0.6;
+        const JUMP_SPEED = -10;
 
         const FRAME_WIDTH = SHEET_WIDTH / FRAME_COUNT;
         const FRAME_HEIGHT = SHEET_HEIGHT;
@@ -157,7 +148,7 @@
 
         // ===== СОСТОЯНИЕ =====
         let currentFrame = 0;
-        let animationTimer = 0;
+        let lastFrameTime = 0;
 
         let posX = 50;
         let posY = canvas.height - FRAME_HEIGHT * SCALE / 2 - 5;
@@ -180,14 +171,13 @@
 
         let allLoaded = false;
 
-        // ===== ПЕРЕХОД =====
+        // ===== ПЕРЕХОД МЕЖДУ УРОВНЯМИ =====
         let isTransitioning = false;
         let transitionProgress = 0;
-        let transitionDirection = 0;
+        let transitionDirection = 0; // 1 = вправо, -1 = влево
         let transitionTargetLevel = 0;
         let transitionStartX = 0;
         let transitionTargetX = 0;
-        const TRANSITION_DURATION = 0.8; // секунд
 
         // ===== СИСТЕМА ДОЖДЯ =====
         let raindrops = [];
@@ -206,11 +196,10 @@
             }
         }
 
-        function updateRain(deltaTime) {
+        function updateRain() {
             for (let drop of raindrops) {
-                const speedFactor = drop.speed * deltaTime * 60;
-                drop.x += Math.sin(RAIN_ANGLE) * speedFactor * 0.3;
-                drop.y += speedFactor;
+                drop.x += Math.sin(RAIN_ANGLE) * drop.speed * 0.3;
+                drop.y += drop.speed;
                 
                 if (drop.y > canvas.height) {
                     drop.y = -drop.length;
@@ -276,7 +265,9 @@
                 
                 oscillator.start();
                 oscillator.stop(audioContext.currentTime + duration);
-            } catch (e) {}
+            } catch (e) {
+                // Игнорируем ошибки звука
+            }
         }
 
         function playJumpSound() {
@@ -419,6 +410,7 @@
             jumpVelocity = JUMP_SPEED;
             currentFrame = JUMP_FRAME_INDEX;
             playJumpSound();
+            console.log('🦘 Прыжок!');
         }
 
         // ===== ПЕРЕКЛЮЧЕНИЕ УРОВНЕЙ =====
@@ -429,6 +421,7 @@
                 return false;
             }
             
+            // Начинаем переход
             isTransitioning = true;
             transitionProgress = 0;
             transitionDirection = direction;
@@ -442,16 +435,18 @@
             }
             
             playTransitionSound();
+            console.log(`🌍 Начинаем переход на уровень ${newLevel + 1}`);
             return true;
         }
 
-        function updateTransition(deltaTime) {
+        function updateTransition() {
             if (!isTransitioning) return;
             
-            transitionProgress += deltaTime / TRANSITION_DURATION;
+            transitionProgress += 0.025; // скорость перехода
             
             if (transitionProgress >= 1) {
                 transitionProgress = 1;
+                // Завершаем переход
                 currentLevel = transitionTargetLevel;
                 posX = transitionTargetX;
                 posY = GROUND_Y;
@@ -461,6 +456,7 @@
                 currentFrame = 0;
                 isTransitioning = false;
                 updateLevelInfo();
+                console.log(`🌍 Переход завершен! Уровень ${currentLevel + 1}`);
             }
         }
 
@@ -468,14 +464,7 @@
             levelInfo.textContent = `🌍 Уровень ${currentLevel + 1} / ${TOTAL_LEVELS}`;
         }
 
-        // ===== FPS СЧЕТЧИК =====
-        let frameCount = 0;
-        let fpsTimer = 0;
-        let currentFPS = 60;
-
         // ===== ИГРОВОЙ ЦИКЛ =====
-        let lastTime = 0;
-
         function gameLoop(timestamp) {
             if (!allLoaded) {
                 renderFallback();
@@ -483,39 +472,25 @@
                 return;
             }
 
-            // Вычисляем дельту времени (в секундах)
-            const deltaTime = Math.min((timestamp - lastTime) / 1000, 0.05);
-            lastTime = timestamp;
-
-            // FPS счетчик
-            frameCount++;
-            fpsTimer += deltaTime;
-            if (fpsTimer >= 0.5) {
-                currentFPS = Math.round(frameCount / fpsTimer);
-                fpsDisplay.textContent = `FPS: ${currentFPS}`;
-                frameCount = 0;
-                fpsTimer = 0;
-            }
-
-            update(deltaTime);
+            update(timestamp);
             render();
             requestAnimationFrame(gameLoop);
         }
 
-        function update(deltaTime) {
+        function update(timestamp) {
             // === ОБНОВЛЕНИЕ ПЕРЕХОДА ===
             if (isTransitioning) {
-                updateTransition(deltaTime);
-                updateRain(deltaTime);
+                updateTransition();
+                // Во время перехода не обновляем остальное
+                updateRain();
                 return;
             }
 
-            // === ДВИЖЕНИЕ (с фиксированной скоростью) ===
+            // === ДВИЖЕНИЕ ===
             let moved = false;
-            const moveDelta = MOVE_SPEED * deltaTime;
             
             if (keys.left) {
-                posX -= moveDelta;
+                posX -= MOVE_SPEED;
                 moved = true;
                 
                 if (posX < FRAME_WIDTH * SCALE / 2) {
@@ -531,7 +506,7 @@
             }
             
             if (keys.right) {
-                posX += moveDelta;
+                posX += MOVE_SPEED;
                 moved = true;
                 
                 if (posX > canvas.width - FRAME_WIDTH * SCALE / 2) {
@@ -560,10 +535,10 @@
                 }
             }
 
-            // === ФИЗИКА ПРЫЖКА (с фиксированной скоростью) ===
+            // === ФИЗИКА ПРЫЖКА ===
             if (isJumping) {
-                jumpVelocity += GRAVITY * deltaTime;
-                posY += jumpVelocity * deltaTime;
+                jumpVelocity += GRAVITY;
+                posY += jumpVelocity;
 
                 if (posY >= GROUND_Y) {
                     posY = GROUND_Y;
@@ -576,27 +551,26 @@
                         isMoving = false;
                         currentFrame = 0;
                     }
+                    console.log('🦘 Приземлились!');
                 }
             }
 
-            // === АНИМАЦИЯ (с фиксированным временем) ===
+            // === АНИМАЦИЯ ===
             if (!isJumping) {
                 if (isMoving) {
-                    animationTimer += deltaTime * 1000;
-                    if (animationTimer >= ANIMATION_SPEED) {
+                    if (timestamp - lastFrameTime > ANIMATION_SPEED) {
                         currentFrame = (currentFrame + 1) % FRAME_COUNT;
-                        animationTimer = 0;
+                        lastFrameTime = timestamp;
                     }
                 } else {
                     currentFrame = 0;
-                    animationTimer = 0;
                 }
             } else {
                 currentFrame = JUMP_FRAME_INDEX;
             }
 
             // === ОБНОВЛЕНИЕ ДОЖДЯ ===
-            updateRain(deltaTime);
+            updateRain();
         }
 
         function render() {
@@ -607,11 +581,13 @@
             let nextBg = currentLevel === 0 ? bg2 : bg1;
             
             if (isTransitioning) {
+                // Плавный переход
                 const progress = transitionProgress;
                 const easeProgress = progress < 0.5 ? 
                     2 * progress * progress : 
                     -1 + (4 - 2 * progress) * progress;
                 
+                // Рисуем текущий фон с затуханием
                 ctx.save();
                 ctx.globalAlpha = 1 - easeProgress;
                 if (currentBg.complete && currentBg.naturalWidth) {
@@ -619,6 +595,7 @@
                 }
                 ctx.restore();
                 
+                // Рисуем новый фон с появлением
                 ctx.save();
                 ctx.globalAlpha = easeProgress;
                 if (nextBg.complete && nextBg.naturalWidth) {
@@ -626,15 +603,21 @@
                 }
                 ctx.restore();
                 
+                // Затемнение
                 ctx.fillStyle = `rgba(0, 0, 0, ${0.3 * Math.sin(progress * Math.PI)})`;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
             } else {
+                // Обычный рендер
                 if (currentBg.complete && currentBg.naturalWidth) {
                     ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
                 } else {
                     ctx.fillStyle = currentLevel === 0 ? '#2d2d2d' : '#1a2a3a';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#666';
+                    ctx.font = '14px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Фон ${currentLevel + 1}`, canvas.width/2, 30);
                 }
             }
 
@@ -653,6 +636,7 @@
                 ctx.save();
                 
                 if (isTransitioning) {
+                    // Анимируем позицию персонажа во время перехода
                     const progress = transitionProgress;
                     const easeProgress = progress < 0.5 ? 
                         2 * progress * progress : 
@@ -676,15 +660,28 @@
                 );
 
                 ctx.restore();
+            } else {
+                ctx.fillStyle = '#ff6b6b';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('chel.png', posX, posY);
             }
 
             // ===== 4. ПЕРЕДНИЙ ПЛАН =====
             if (front.complete && front.naturalWidth) {
                 ctx.drawImage(front, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#666';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Передний план (front.png)', canvas.width/2, canvas.height - 10);
             }
 
             // ===== 5. ИНДИКАТОРЫ =====
             if (!isTransitioning) {
+                // Правая сторона
                 if (currentLevel < TOTAL_LEVELS - 1) {
                     ctx.fillStyle = 'rgba(100, 200, 255, 0.2)';
                     ctx.font = '14px sans-serif';
@@ -698,6 +695,7 @@
                     }
                 }
                 
+                // Левая сторона
                 if (currentLevel > 0) {
                     ctx.fillStyle = 'rgba(100, 200, 255, 0.2)';
                     ctx.font = '14px sans-serif';
@@ -724,12 +722,16 @@
             if (isTransitioning) {
                 ctx.fillStyle = 'rgba(255, 200, 50, 0.5)';
                 ctx.fillText(`🔄 ПЕРЕХОД ${Math.round(transitionProgress * 100)}%`, 12, 94);
+            } else if (isJumping && (keys.left || keys.right)) {
+                ctx.fillStyle = 'rgba(255, 200, 50, 0.3)';
+                ctx.fillText('▶ движение во время прыжка', 12, 94);
             }
             
             ctx.fillStyle = 'rgba(255,255,255,0.1)';
             ctx.font = '11px monospace';
             ctx.textAlign = 'right';
             ctx.fillText('Пробел / ↑', canvas.width - 12, 22);
+            ctx.fillText(`🌧️ ${RAIN_COUNT}`, canvas.width - 12, 40);
         }
 
         function renderFallback() {
@@ -743,6 +745,10 @@
             ctx.fillStyle = '#888';
             ctx.font = '14px sans-serif';
             ctx.fillText(`Загружено: ${imagesLoaded}/${totalImages}`, canvas.width/2, canvas.height/2 + 30);
+            
+            ctx.fillStyle = '#666';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('bg.jpg, bg2.png, chel.png, front.png', canvas.width/2, canvas.height/2 + 60);
         }
 
         // Запуск если уже загружено
