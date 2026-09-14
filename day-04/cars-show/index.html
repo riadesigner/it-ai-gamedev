@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Car Viewer</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: rgba(15, 15, 15, 0.75);
+    --panel-border: rgba(255, 204, 0, 0.18);
+    --accent: #ffcc00;
+    --accent-dim: rgba(255, 204, 0, 0.35);
+    --text: #eaeaea;
+    --text-dim: rgba(234, 234, 234, 0.55);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+  #app { position: fixed; inset: 0; cursor: grab; }
+  #app.dragging { cursor: grabbing; }
+  canvas { display: block; }
+
+  .ui { position: fixed; z-index: 10; display: flex; gap: 12px; }
+  .ui.nav { bottom: 32px; right: 32px; }
+
+  .btn {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 20px; line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: transform .15s ease, background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+    user-select: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn:hover {
+    background: rgba(255, 204, 0, 0.12);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 18px rgba(255, 204, 0, 0.25);
+  }
+  .btn:active { transform: scale(0.92); }
+  .btn:disabled {
+    opacity: 0.25; cursor: not-allowed;
+    box-shadow: none; background: var(--panel);
+    color: var(--text); border-color: var(--panel-border);
+  }
+
+  .ui.dpad {
+    bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    display: grid;
+    grid-template-columns: 56px 56px 56px;
+    grid-template-rows: 56px 56px 56px;
+    gap: 8px;
+  }
+  .ui.dpad .up    { grid-column: 2; grid-row: 1; }
+  .ui.dpad .left  { grid-column: 1; grid-row: 2; }
+  .ui.dpad .right { grid-column: 3; grid-row: 2; }
+  .ui.dpad .down  { grid-column: 2; grid-row: 3; }
+
+  .ui.zoom { bottom: 32px; left: 32px; align-items: center; gap: 8px; }
+  .ui.zoom .zoom-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9px; letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent); opacity: 0.8; margin-right: 6px;
+  }
+
+  #hud {
+    position: fixed; top: 24px; left: 24px; z-index: 10;
+    padding: 14px 18px 14px 16px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 2px solid var(--accent);
+    border-radius: 4px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; letter-spacing: 0.3px;
+    color: var(--text); min-width: 230px;
+    pointer-events: none;
+  }
+  #hud .hud-title {
+    font-size: 10px; letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent); margin-bottom: 10px; opacity: 0.85;
+  }
+  #hud .hud-row { display: flex; justify-content: space-between; gap: 20px; padding: 3px 0; }
+  #hud .hud-row .label { color: var(--text-dim); }
+  #hud .hud-row .value { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  #lighting {
+    position: fixed; top: 24px; right: 24px; z-index: 10;
+    width: 250px; padding: 14px 18px 16px 16px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 2px solid var(--accent);
+    border-radius: 4px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; color: var(--text);
+  }
+  #lighting .hud-title {
+    font-size: 10px; letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px; opacity: 0.85;
+  }
+  #lighting .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 4px 10px; padding: 6px 0;
+  }
+  #lighting .row .label { color: var(--text-dim); letter-spacing: 0.5px; }
+  #lighting .row .value {
+    color: var(--text); font-variant-numeric: tabular-nums;
+    text-align: right; min-width: 42px;
+  }
+  #lighting .row input[type="range"] { grid-column: 1 / -1; width: 100%; }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    height: 4px; background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: none;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.6);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 16px rgba(255, 204, 0, 0.9);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: none;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.6);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 4px; background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+  }
+
+  #loader {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 22px; z-index: 20;
+    opacity: 1; transition: opacity .3s ease;
+    pointer-events: none;
+  }
+  #loader.hidden { opacity: 0; }
+
+  .spinner {
+    width: 54px; height: 54px; border-radius: 50%;
+    border: 2px solid rgba(255, 204, 0, 0.12);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+    filter: drop-shadow(0 0 8px rgba(255, 204, 0, 0.5));
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #loader .loader-text {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent); opacity: 0.85;
+  }
+
+  #model-name {
+    position: fixed; top: 28px; left: 50%;
+    transform: translateX(-50%);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: 6px;
+    text-transform: uppercase;
+    opacity: 0.75; z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<div id="model-name">МОДЕЛЬ 1 / 3</div>
+
+<div id="hud">
+  <div class="hud-title">Параметры вида</div>
+  <div class="hud-row"><span class="label">Угол камеры</span><span class="value" id="hud-cam">0.0°</span></div>
+  <div class="hud-row"><span class="label">Дистанция</span><span class="value" id="hud-dist">0.0 м</span></div>
+  <div class="hud-row"><span class="label">Поворот подиума</span><span class="value" id="hud-rot">0.0°</span></div>
+</div>
+
+<div id="lighting">
+  <div class="hud-title">Освещение</div>
+
+  <div class="row">
+    <span class="label">Key</span>
+    <span class="value" id="val-key">3.0</span>
+    <input type="range" id="sl-key" min="0" max="8" step="0.1" value="3.0" />
+  </div>
+  <div class="row">
+    <span class="label">Fill</span>
+    <span class="value" id="val-fill">1.3</span>
+    <input type="range" id="sl-fill" min="0" max="8" step="0.1" value="1.3" />
+  </div>
+  <div class="row">
+    <span class="label">Rim</span>
+    <span class="value" id="val-rim">2.2</span>
+    <input type="range" id="sl-rim" min="0" max="8" step="0.1" value="2.2" />
+  </div>
+  <div class="row">
+    <span class="label">Окружение</span>
+    <span class="value" id="val-hdr">1.0</span>
+    <input type="range" id="sl-hdr" min="0" max="3" step="0.05" value="1.0" />
+  </div>
+  <div class="row">
+    <span class="label">Экспозиция</span>
+    <span class="value" id="val-exposure">1.0</span>
+    <input type="range" id="sl-exposure" min="0.2" max="2.5" step="0.05" value="1.0" />
+  </div>
+  <div class="row">
+    <span class="label">Фон</span>
+    <span class="value" id="val-bg">1.0</span>
+    <input type="range" id="sl-bg" min="0" max="2" step="0.05" value="1.0" />
+  </div>
+</div>
+
+<div class="ui dpad">
+  <button class="btn up"    id="camUp"    title="Камера выше">↑</button>
+  <button class="btn left"  id="rotLeft"  title="Вращать влево">←</button>
+  <button class="btn right" id="rotRight" title="Вращать вправо">→</button>
+  <button class="btn down"  id="camDown"  title="Камера ниже">↓</button>
+</div>
+
+<div class="ui zoom">
+  <span class="zoom-label">Дистанция</span>
+  <button class="btn" id="zoomOut" title="Ближе">−</button>
+  <button class="btn" id="zoomIn"  title="Дальше">+</button>
+</div>
+
+<div class="ui nav">
+  <button class="btn" id="prev" title="Предыдущая">◀</button>
+  <button class="btn" id="next" title="Следующая">▶</button>
+</div>
+
+<div id="loader" class="hidden">
+  <div class="spinner"></div>
+  <div class="loader-text" id="loader-text">Загрузка модели</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+
+/* ============================================================
+   Конфигурация
+   ============================================================ */
+const MODELS = ['model-1.glb', 'model-2.glb', 'model-3.glb'];
+const ENV_URL = 'hansaplatz_4k.exr';
+
+const PODIUM_RADIUS = 2.5;
+const PODIUM_HEIGHT = 0.3;
+
+const MODEL_FIT_RATIO = 0.85;
+
+const ROT_STEP = Math.PI / 4;
+const PHI_STEP = THREE.MathUtils.degToRad(6);
+const PHI_MIN  = THREE.MathUtils.degToRad(18);
+const PHI_MAX  = THREE.MathUtils.degToRad(85);
+
+const RADIUS_MIN  = 5;
+const RADIUS_MAX  = 30;
+const RADIUS_STEP = 0.5;
+
+/* --- Управление мышью --- */
+const DRAG_ROT_SENS = 0.008;
+const DRAG_PHI_SENS = 0.005;
+const WHEEL_ZOOM    = 0.02;
+
+/* ============================================================
+   Стартовые параметры
+   ============================================================ */
+const START_ELEVATION_DEG = 5;
+const START_RADIUS        = 7.8;
+const START_ROTATION_DEG  = 45;
+
+const START_KEY_INTENSITY  = 3.0;
+const START_FILL_INTENSITY = 1.3;
+const START_RIM_INTENSITY  = 2.2;
+const START_ENV_INTENSITY  = 1.0;
+const START_EXPOSURE       = 1.0;
+const START_BG_INTENSITY   = 1.0;
+
+/* ============================================================
+   Сцена, рендерер
+   ============================================================ */
+const container  = document.getElementById('app');
+const loaderEl   = document.getElementById('loader');
+const loaderText = document.getElementById('loader-text');
+const nameEl     = document.getElementById('model-name');
+
+const hudCam  = document.getElementById('hud-cam');
+const hudDist = document.getElementById('hud-dist');
+const hudRot  = document.getElementById('hud-rot');
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 2000);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = START_EXPOSURE;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+/* ============================================================
+   Сферические координаты камеры
+   ============================================================ */
+const CAM_TARGET = new THREE.Vector3(0, 1.0, 0);
+
+let targetPhi  = THREE.MathUtils.degToRad(90 - START_ELEVATION_DEG);
+let currentPhi = targetPhi;
+
+let targetRadius  = START_RADIUS;
+let currentRadius = START_RADIUS;
+
+function applyCamera() {
+  const sinPhi = Math.sin(currentPhi);
+  const cosPhi = Math.cos(currentPhi);
+  camera.position.set(
+    0,
+    CAM_TARGET.y + currentRadius * cosPhi,
+    currentRadius * sinPhi
+  );
+  camera.lookAt(CAM_TARGET);
+}
+applyCamera();
+
+/* ============================================================
+   EXR-панорама: фон + отражения (IBL)
+   ============================================================ */
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+
+new EXRLoader().load(
+  ENV_URL,
+  (tex) => {
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    scene.background = tex;
+    scene.backgroundIntensity = START_BG_INTENSITY;
+    scene.backgroundRotation = new THREE.Euler(0, 0, 0);
+
+    scene.environment = pmrem.fromEquirectangular(tex).texture;
+    scene.environmentIntensity = START_ENV_INTENSITY;
+    scene.environmentRotation = new THREE.Euler(0, 0, 0);
+  },
+  undefined,
+  (err) => console.warn('EXR не загрузился:', err)
+);
+
+/* ============================================================
+   Пол вокруг подиума — тёмная подложка + жёлтое кольцо
+   ============================================================ */
+
+
+const floorGlowMat = new THREE.MeshBasicMaterial({
+  color: 0xffcc00,
+  transparent: true,
+  opacity: 0.22,
+  toneMapped: false,
+});
+const floorGlow = new THREE.Mesh(
+  new THREE.RingGeometry(PODIUM_RADIUS + 0.05, PODIUM_RADIUS + 0.4, 128),
+  floorGlowMat
+);
+floorGlow.rotation.x = -Math.PI / 2;
+floorGlow.position.y = 0.005;
+scene.add(floorGlow);
+
+/* ============================================================
+   Подиум + turntable + wrapper
+   ============================================================ */
+const turntable = new THREE.Group();
+scene.add(turntable);
+
+const podiumGeo = new THREE.CylinderGeometry(PODIUM_RADIUS, PODIUM_RADIUS, PODIUM_HEIGHT, 128, 1);
+const podiumMat = new THREE.MeshStandardMaterial({
+  color: 0x141414,
+  roughness: 0.35,
+  metalness: 0.85,
+});
+const podium = new THREE.Mesh(podiumGeo, podiumMat);
+podium.position.y = PODIUM_HEIGHT / 2;
+podium.castShadow = true;
+podium.receiveShadow = true;
+turntable.add(podium);
+
+/* ============================================================
+   Зеркальная верхушка подиума
+   ============================================================ */
+const mirrorTop = new Reflector(
+  new THREE.CircleGeometry(PODIUM_RADIUS - 0.005, 128),
+  {
+    clipBias: 0.003,
+    textureWidth: 1024,
+    textureHeight: 1024,
+    color: 0x7f7f7f,   // ярче — заметнее отражение; 0x7f7f7f — «студийное» зеркало
+    recursive: false,
+  }
+);
+mirrorTop.rotation.x = -Math.PI / 2;
+mirrorTop.position.y = PODIUM_HEIGHT + 0.002;
+turntable.add(mirrorTop);
+
+// Диск-ловушка теней над зеркалом: Reflector тени не принимает,
+// а ShadowMaterial рисует их поверх отражения.
+const podiumShadow = new THREE.Mesh(
+  new THREE.CircleGeometry(PODIUM_RADIUS - 0.005, 128),
+  new THREE.ShadowMaterial({ opacity: 0.5 })
+);
+podiumShadow.rotation.x = -Math.PI / 2;
+podiumShadow.position.y = PODIUM_HEIGHT + 0.004;
+podiumShadow.receiveShadow = true;
+turntable.add(podiumShadow);
+
+// Светящееся кольцо по верхнему краю
+const ringGeo = new THREE.TorusGeometry(PODIUM_RADIUS - 0.01, 0.015, 16, 200);
+const ringMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  emissive: 0xffcc00,
+  emissiveIntensity: 1.2,
+  roughness: 0.2,
+  metalness: 0.9,
+});
+const ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x = Math.PI / 2;
+ring.position.y = PODIUM_HEIGHT + 0.006;
+turntable.add(ring);
+
+const modelWrapper = new THREE.Group();
+modelWrapper.position.y = PODIUM_HEIGHT;
+turntable.add(modelWrapper);
+
+/* ============================================================
+   Свет
+   ============================================================ */
+const lightTargets = new THREE.Object3D();
+lightTargets.position.set(0, PODIUM_HEIGHT + 0.6, 0);
+scene.add(lightTargets);
+
+const lightConfigs = [
+  { color: 0xfff2e0, intensity: START_KEY_INTENSITY,  pos: [ 6,  9,  6], shadow: true  },
+  { color: 0x88aaff, intensity: START_FILL_INTENSITY, pos: [-7,  5,  4], shadow: false },
+  { color: 0xffffff, intensity: START_RIM_INTENSITY,  pos: [ 0,  7, -9], shadow: false },
+];
+
+const lights = [];
+
+lightConfigs.forEach((cfg, i) => {
+  const light = new THREE.DirectionalLight(cfg.color, cfg.intensity);
+  light.position.set(...cfg.pos);
+  light.target = lightTargets;
+  scene.add(light);
+  lights[i] = light;
+
+  if (cfg.shadow) {
+    light.castShadow = true;
+    light.shadow.mapSize.set(2048, 2048);
+    const cam = light.shadow.camera;
+    cam.left = -8; cam.right = 8; cam.top = 8; cam.bottom = -8;
+    cam.near = 0.5; cam.far = 40;
+    light.shadow.bias = -0.0005;
+    light.shadow.normalBias = 0.02;
+  }
+});
+
+const [keyLight, fillLight, rimLight] = lights;
+
+/* ============================================================
+   Ползунки
+   ============================================================ */
+function bindSlider(sliderId, valueId, onChange, formatter = (v) => v.toFixed(2)) {
+  const slider = document.getElementById(sliderId);
+  const valueEl = document.getElementById(valueId);
+
+  const update = () => {
+    const v = parseFloat(slider.value);
+    valueEl.textContent = formatter(v);
+    onChange(v);
+  };
+
+  slider.addEventListener('input', update);
+  update();
+  return { slider, valueEl };
+}
+
+bindSlider('sl-key', 'val-key', (v) => { keyLight.intensity = v; }, (v) => v.toFixed(1));
+bindSlider('sl-fill', 'val-fill', (v) => { fillLight.intensity = v; }, (v) => v.toFixed(1));
+bindSlider('sl-rim', 'val-rim', (v) => { rimLight.intensity = v; }, (v) => v.toFixed(1));
+bindSlider('sl-hdr', 'val-hdr', (v) => { scene.environmentIntensity = v; }, (v) => v.toFixed(2));
+bindSlider('sl-exposure', 'val-exposure', (v) => { renderer.toneMappingExposure = v; }, (v) => v.toFixed(2));
+bindSlider('sl-bg', 'val-bg', (v) => { scene.backgroundIntensity = v; }, (v) => v.toFixed(2));
+
+/* ============================================================
+   Анимационные утилиты
+   ============================================================ */
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const easeInCubic  = (t) => t * t * t;
+
+function tween({ from, to, duration, easing = easeOutCubic, onUpdate, onComplete }) {
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const e = easing(t);
+    onUpdate(from + (to - from) * e, e);
+    if (t < 1) requestAnimationFrame(tick);
+    else onComplete && onComplete();
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ============================================================
+   Загрузка моделей
+   ============================================================ */
+const gltfLoader = new GLTFLoader();
+let currentModelIndex = 0;
+let currentModel = null;
+let isTransitioning = false;
+
+const prevBtn = document.getElementById('prev');
+const nextBtn = document.getElementById('next');
+
+function setNavDisabled(disabled) {
+  prevBtn.disabled = disabled;
+  nextBtn.disabled = disabled;
+}
+
+function updateNameLabel() {
+  nameEl.textContent = `МОДЕЛЬ ${currentModelIndex + 1} / ${MODELS.length}`;
+}
+
+function disposeObject(obj) {
+  obj.traverse((o) => {
+    if (o.isMesh) {
+      o.geometry?.dispose();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach((m) => {
+        if (!m) return;
+        for (const k in m) {
+          const v = m[k];
+          if (v && v.isTexture) v.dispose();
+        }
+        m.dispose();
+      });
+    }
+  });
+}
+
+function showLoader() {
+  loaderText.textContent = `Загрузка модели ${currentModelIndex + 1} / ${MODELS.length}`;
+  loaderEl.classList.remove('hidden');
+}
+function hideLoader() {
+  loaderEl.classList.add('hidden');
+}
+
+function prepareModel(gltf) {
+  const root = gltf.scene;
+
+  const rawBox  = new THREE.Box3().setFromObject(root);
+  const rawSize = rawBox.getSize(new THREE.Vector3());
+
+  const maxHorizontal = Math.max(rawSize.x, rawSize.z);
+  const targetSize    = PODIUM_RADIUS * 2 * MODEL_FIT_RATIO;
+  const scale         = maxHorizontal > 0 ? targetSize / maxHorizontal : 1;
+
+  root.scale.setScalar(scale);
+
+  const box    = new THREE.Box3().setFromObject(root);
+  const center = box.getCenter(new THREE.Vector3());
+
+  root.position.x -= center.x;
+  root.position.z -= center.z;
+  root.position.y -= box.min.y;
+
+  root.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach((m) => {
+        if (!m) return;
+        m.envMapIntensity = 1.2;
+        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+      });
+    }
+  });
+
+  return root;
+}
+
+function flashRing() {
+  const base = 1.2;
+  const peak = 7.0;
+  tween({
+    from: base, to: peak, duration: 220, easing: easeOutCubic,
+    onUpdate: (v) => { ringMat.emissiveIntensity = v; },
+    onComplete: () => {
+      tween({
+        from: peak, to: base, duration: 550, easing: easeOutCubic,
+        onUpdate: (v) => { ringMat.emissiveIntensity = v; },
+      });
+    },
+  });
+}
+
+function hideCurrentModel() {
+  return new Promise((resolve) => {
+    if (!currentModel) { resolve(); return; }
+
+    const startRot = modelWrapper.rotation.y;
+    const startScale = modelWrapper.scale.x;
+
+    tween({
+      from: 0, to: 1, duration: 260, easing: easeInCubic,
+      onUpdate: (t) => {
+        modelWrapper.rotation.y = startRot + t * Math.PI / 2;
+        const s = startScale - (startScale - 0.6) * t;
+        modelWrapper.scale.setScalar(s);
+      },
+      onComplete: () => {
+        modelWrapper.remove(currentModel);
+        disposeObject(currentModel);
+        currentModel = null;
+        resolve();
+      },
+    });
+  });
+}
+
+function revealNewModel(model) {
+  return new Promise((resolve) => {
+    modelWrapper.add(model);
+    modelWrapper.rotation.y = -Math.PI / 2;
+    modelWrapper.scale.setScalar(0.6);
+
+    tween({
+      from: 0, to: 1, duration: 520, easing: easeOutCubic,
+      onUpdate: (t) => {
+        modelWrapper.rotation.y = -Math.PI / 2 + t * (Math.PI / 2);
+        modelWrapper.scale.setScalar(0.6 + (1 - 0.6) * t);
+      },
+      onComplete: () => {
+        modelWrapper.rotation.y = 0;
+        modelWrapper.scale.setScalar(1);
+        resolve();
+      },
+    });
+  });
+}
+
+async function loadModel(index) {
+  if (isTransitioning) return;
+  isTransitioning = true;
+  setNavDisabled(true);
+
+  await hideCurrentModel();
+
+  showLoader();
+
+  gltfLoader.load(
+    MODELS[index],
+    async (gltf) => {
+      const model = prepareModel(gltf);
+      hideLoader();
+      await revealNewModel(model);
+
+      currentModel = model;
+      updateNameLabel();
+      flashRing();
+
+      isTransitioning = false;
+      setNavDisabled(false);
+    },
+    undefined,
+    (err) => {
+      console.error('Ошибка загрузки модели:', err);
+      hideLoader();
+      isTransitioning = false;
+      setNavDisabled(false);
+    }
+  );
+}
+
+/* ============================================================
+   Управление
+   ============================================================ */
+let targetRotation  = THREE.MathUtils.degToRad(START_ROTATION_DEG);
+let currentRotation = targetRotation;
+
+function rotateLeft()  { targetRotation -= ROT_STEP; }
+function rotateRight() { targetRotation += ROT_STEP; }
+function camUp()       { targetPhi = Math.max(PHI_MIN, targetPhi - PHI_STEP); }
+function camDown()     { targetPhi = Math.min(PHI_MAX, targetPhi + PHI_STEP); }
+function zoomIn()      { targetRadius = Math.max(RADIUS_MIN, targetRadius - RADIUS_STEP); }
+function zoomOut()     { targetRadius = Math.min(RADIUS_MAX, targetRadius + RADIUS_STEP); }
+
+document.getElementById('rotLeft').addEventListener('click', rotateLeft);
+document.getElementById('rotRight').addEventListener('click', rotateRight);
+document.getElementById('camUp').addEventListener('click', camUp);
+document.getElementById('camDown').addEventListener('click', camDown);
+document.getElementById('zoomIn').addEventListener('click', zoomIn);
+document.getElementById('zoomOut').addEventListener('click', zoomOut);
+
+window.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+
+  switch (e.key) {
+    case 'ArrowLeft':  rotateLeft();  e.preventDefault(); break;
+    case 'ArrowRight': rotateRight(); e.preventDefault(); break;
+    case 'ArrowUp':    camUp();       e.preventDefault(); break;
+    case 'ArrowDown':  camDown();     e.preventDefault(); break;
+    case '+': case '=': zoomIn();  e.preventDefault(); break;
+    case '-': case '_': zoomOut(); e.preventDefault(); break;
+    case ' ': case 'Spacebar':
+      if (!isTransitioning) {
+        currentModelIndex = (currentModelIndex + 1) % MODELS.length;
+        loadModel(currentModelIndex);
+      }
+      e.preventDefault();
+      break;
+  }
+});
+
+prevBtn.addEventListener('click', () => {
+  if (isTransitioning) return;
+  currentModelIndex = (currentModelIndex - 1 + MODELS.length) % MODELS.length;
+  loadModel(currentModelIndex);
+});
+nextBtn.addEventListener('click', () => {
+  if (isTransitioning) return;
+  currentModelIndex = (currentModelIndex + 1) % MODELS.length;
+  loadModel(currentModelIndex);
+});
+
+/* ============================================================
+   Управление мышью
+   ============================================================ */
+let isDragging = false;
+let lastX = 0;
+let lastY = 0;
+
+const canvas = renderer.domElement;
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  isDragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  container.classList.add('dragging');
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!isDragging) return;
+
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  lastX = e.clientX;
+  lastY = e.clientY;
+
+  targetRotation += dx * DRAG_ROT_SENS;
+  targetPhi = Math.max(PHI_MIN, Math.min(PHI_MAX, targetPhi - dy * DRAG_PHI_SENS));
+});
+
+function endDrag(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  container.classList.remove('dragging');
+  try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+}
+
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('lostpointercapture', () => {
+  isDragging = false;
+  container.classList.remove('dragging');
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  targetRadius = Math.max(
+    RADIUS_MIN,
+    Math.min(RADIUS_MAX, targetRadius + e.deltaY * WHEEL_ZOOM)
+  );
+}, { passive: false });
+
+/* ============================================================
+   Ресайз
+   ============================================================ */
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  // Reflector имеет фиксированный RT 1024×1024 — ресайз ему не нужен.
+});
+
+/* ============================================================
+   HUD
+   ============================================================ */
+function updateHUD() {
+  const elevationDeg = 90 - THREE.MathUtils.radToDeg(currentPhi);
+  hudCam.textContent = elevationDeg.toFixed(1) + '°';
+
+  hudDist.textContent = currentRadius.toFixed(1) + ' м';
+
+  let rotDeg = THREE.MathUtils.radToDeg(currentRotation) % 360;
+  if (rotDeg < 0) rotDeg += 360;
+  hudRot.textContent = rotDeg.toFixed(1) + '°';
+}
+
+/* ============================================================
+   Цикл рендера
+   ============================================================ */
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = clock.getDelta();
+  const k = Math.min(1, dt * 6);
+
+  currentRotation += (targetRotation - currentRotation) * k;
+  turntable.rotation.y = currentRotation;
+
+  if (scene.backgroundRotation) {
+    scene.backgroundRotation.y = currentRotation;
+  }
+  if (scene.environmentRotation) {
+    scene.environmentRotation.y = currentRotation;
+  }
+
+  currentPhi    += (targetPhi - currentPhi) * k;
+  currentRadius += (targetRadius - currentRadius) * k;
+  applyCamera();
+
+  updateHUD();
+
+  renderer.render(scene, camera);
+}
+
+/* ============================================================
+   Старт
+   ============================================================ */
+updateNameLabel();
+loadModel(currentModelIndex);
+animate();
+</script>
+
+</body>
+</html>
