@@ -151,30 +151,165 @@
     border-radius: 2px;
   }
 
-  #loader {
-    position: fixed; inset: 0;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 22px; z-index: 20;
-    opacity: 1; transition: opacity .3s ease;
+  /* ============================================================
+     Полноэкранный загрузчик (boot)
+     ============================================================ */
+  #boot-loader {
+    position: fixed; inset: 0; z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 45%, rgba(255, 204, 0, 0.07), transparent 65%),
+      radial-gradient(ellipse at center, #101010 0%, #050505 75%);
+    transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 1; visibility: visible;
+  }
+  #boot-loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  #boot-loader::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 204, 0, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 204, 0, 0.035) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 55% 55% at center, #000 10%, transparent 75%);
+            mask-image: radial-gradient(ellipse 55% 55% at center, #000 10%, transparent 75%);
     pointer-events: none;
   }
-  #loader.hidden { opacity: 0; }
 
-  .spinner {
-    width: 54px; height: 54px; border-radius: 50%;
+  .boot-content {
+    position: relative;
+    width: min(380px, 82vw);
+    display: flex; flex-direction: column;
+    gap: 30px;
+    animation: bootFadeIn 0.7s ease both;
+  }
+
+  @keyframes bootFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .boot-brand {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 20px;
+  }
+
+  .boot-mark {
+    width: 56px; height: 56px;
+    position: relative;
+  }
+  .boot-mark::before,
+  .boot-mark::after {
+    content: ''; position: absolute; inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 204, 0, 0.12);
+    border-top-color: var(--accent);
+    animation: bootSpin 1.3s cubic-bezier(0.6, 0.1, 0.4, 0.9) infinite;
+    filter: drop-shadow(0 0 6px rgba(255, 204, 0, 0.5));
+  }
+  .boot-mark::after {
+    inset: 10px;
+    border-top-color: transparent;
+    border-right-color: var(--accent);
+    animation-duration: 1.9s;
+    animation-direction: reverse;
+    opacity: 0.7;
+  }
+  .boot-mark .boot-dot {
+    position: absolute;
+    inset: 0; margin: auto;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 14px rgba(255, 204, 0, 0.9);
+    animation: bootPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes bootSpin { to { transform: rotate(360deg); } }
+  @keyframes bootPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.4); opacity: 0.6; }
+  }
+
+  .boot-title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: 8px;
+    text-transform: uppercase;
+    color: var(--text);
+    opacity: 0.9;
+    padding-left: 8px;
+    text-align: center;
+  }
+
+  .boot-progress {
+    position: relative;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .boot-progress-bar {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg,
+      rgba(255, 204, 0, 0.5) 0%,
+      var(--accent) 60%,
+      #fff2b0 100%);
+    transform: scaleX(0);
+    transform-origin: left center;
+    will-change: transform;
+    box-shadow:
+      0 0 12px rgba(255, 204, 0, 0.7),
+      0 0 24px rgba(255, 204, 0, 0.35);
+  }
+
+  .boot-meta {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: -12px;
+  }
+  .boot-status { color: var(--text-dim); }
+  .boot-percent {
+    color: var(--accent);
+    font-size: 15px; letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+  }
+
+  .boot-hint {
+    text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9px; letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    opacity: 0.5;
+    margin-top: -10px;
+  }
+
+  /* ============================================================
+     Мини-загрузчик для переходов между моделями
+     ============================================================ */
+  #mini-loader {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+  }
+  #mini-loader.hidden { opacity: 0; }
+
+  .mini-spinner {
+    width: 42px; height: 42px;
+    border-radius: 50%;
     border: 2px solid rgba(255, 204, 0, 0.12);
     border-top-color: var(--accent);
-    animation: spin 0.9s linear infinite;
-    filter: drop-shadow(0 0 8px rgba(255, 204, 0, 0.5));
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  #loader .loader-text {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 11px; letter-spacing: 4px;
-    text-transform: uppercase;
-    color: var(--accent); opacity: 0.85;
+    animation: bootSpin 0.85s linear infinite;
+    filter: drop-shadow(0 0 10px rgba(255, 204, 0, 0.6));
+    background: rgba(10, 10, 10, 0.35);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
 
   #model-name {
@@ -251,13 +386,36 @@
 </div>
 
 <div class="ui nav">
-  <button class="btn" id="prev" title="Предыдущая">◀</button>
-  <button class="btn" id="next" title="Следующая">▶</button>
+  <button class="btn" id="prev" title="Предыдущая" disabled>◀</button>
+  <button class="btn" id="next" title="Следующая"  disabled>▶</button>
 </div>
 
-<div id="loader" class="hidden">
-  <div class="spinner"></div>
-  <div class="loader-text" id="loader-text">Загрузка модели</div>
+<!-- Полноэкранный загрузчик -->
+<div id="boot-loader">
+  <div class="boot-content">
+    <div class="boot-brand">
+      <div class="boot-mark">
+        <div class="boot-dot"></div>
+      </div>
+      <div class="boot-title">3D Автосалон</div>
+    </div>
+
+    <div class="boot-progress">
+      <div class="boot-progress-bar" id="boot-bar"></div>
+    </div>
+
+    <div class="boot-meta">
+      <span class="boot-status" id="boot-status">Инициализация</span>
+      <span class="boot-percent" id="boot-percent">0%</span>
+    </div>
+
+    <div class="boot-hint" id="boot-hint">Подготовка сцены</div>
+  </div>
+</div>
+
+<!-- Мини-загрузчик для переходов -->
+<div id="mini-loader" class="hidden">
+  <div class="mini-spinner"></div>
 </div>
 
 <script type="importmap">
@@ -315,12 +473,10 @@ const START_EXPOSURE       = 1.0;
 const START_BG_INTENSITY   = 1.0;
 
 /* ============================================================
-   Сцена, рендерер
+   DOM / сцена / рендерер
    ============================================================ */
-const container  = document.getElementById('app');
-const loaderEl   = document.getElementById('loader');
-const loaderText = document.getElementById('loader-text');
-const nameEl     = document.getElementById('model-name');
+const container = document.getElementById('app');
+const nameEl    = document.getElementById('model-name');
 
 const hudCam  = document.getElementById('hud-cam');
 const hudDist = document.getElementById('hud-dist');
@@ -336,6 +492,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = START_EXPOSURE;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x0a0a0a, 1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
@@ -364,35 +521,14 @@ function applyCamera() {
 applyCamera();
 
 /* ============================================================
-   EXR-панорама: фон + отражения (IBL)
+   PMREM
    ============================================================ */
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
 
-new EXRLoader().load(
-  ENV_URL,
-  (tex) => {
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-
-    scene.background = tex;
-    scene.backgroundIntensity = START_BG_INTENSITY;
-    scene.backgroundRotation = new THREE.Euler(0, 0, 0);
-
-    scene.environment = pmrem.fromEquirectangular(tex).texture;
-    scene.environmentIntensity = START_ENV_INTENSITY;
-    scene.environmentRotation = new THREE.Euler(0, 0, 0);
-  },
-  undefined,
-  (err) => console.warn('EXR не загрузился:', err)
-);
-
 /* ============================================================
-   Пол вокруг подиума — тёмная подложка + жёлтое кольцо
+   Пол вокруг подиума — жёлтое кольцо
    ============================================================ */
-
-
 const floorGlowMat = new THREE.MeshBasicMaterial({
   color: 0xffcc00,
   transparent: true,
@@ -434,7 +570,7 @@ const mirrorTop = new Reflector(
     clipBias: 0.003,
     textureWidth: 1024,
     textureHeight: 1024,
-    color: 0x7f7f7f,   // ярче — заметнее отражение; 0x7f7f7f — «студийное» зеркало
+    color: 0x7f7f7f,
     recursive: false,
   }
 );
@@ -442,8 +578,6 @@ mirrorTop.rotation.x = -Math.PI / 2;
 mirrorTop.position.y = PODIUM_HEIGHT + 0.002;
 turntable.add(mirrorTop);
 
-// Диск-ловушка теней над зеркалом: Reflector тени не принимает,
-// а ShadowMaterial рисует их поверх отражения.
 const podiumShadow = new THREE.Mesh(
   new THREE.CircleGeometry(PODIUM_RADIUS - 0.005, 128),
   new THREE.ShadowMaterial({ opacity: 0.5 })
@@ -453,7 +587,6 @@ podiumShadow.position.y = PODIUM_HEIGHT + 0.004;
 podiumShadow.receiveShadow = true;
 turntable.add(podiumShadow);
 
-// Светящееся кольцо по верхнему краю
 const ringGeo = new THREE.TorusGeometry(PODIUM_RADIUS - 0.01, 0.015, 16, 200);
 const ringMat = new THREE.MeshStandardMaterial({
   color: 0xffffff,
@@ -550,12 +683,141 @@ function tween({ from, to, duration, easing = easeOutCubic, onUpdate, onComplete
 }
 
 /* ============================================================
+   Загрузчик — прогресс и UI
+   ============================================================ */
+const bootLoader   = document.getElementById('boot-loader');
+const bootBar      = document.getElementById('boot-bar');
+const bootPercent  = document.getElementById('boot-percent');
+const bootStatus   = document.getElementById('boot-status');
+const bootHint     = document.getElementById('boot-hint');
+const miniLoader   = document.getElementById('mini-loader');
+
+// Веса: EXR ~45% (обычно самый тяжёлый), модель ~55%
+const loadState = {
+  exr:   { weight: 0.45, loaded: 0, total: 0, done: false },
+  model: { weight: 0.55, loaded: 0, total: 0, done: false },
+};
+
+let targetProgress    = 0;
+let displayedProgress = 0;
+let loaderRunning     = false;
+
+function computeTargetProgress() {
+  let p = 0;
+  for (const k in loadState) {
+    const s = loadState[k];
+    if (s.done) p += s.weight;
+    else if (s.total > 0) p += s.weight * Math.min(1, s.loaded / s.total);
+  }
+  targetProgress = Math.min(1, p);
+  updateBootStatus();
+}
+
+function updateBootStatus() {
+  const exrDone   = loadState.exr.done;
+  const modelDone = loadState.model.done;
+
+  let text, hint;
+  if (!exrDone && !modelDone) {
+    text = 'Загрузка ресурсов';
+    hint = 'Окружение и модель';
+  } else if (!exrDone) {
+    text = 'Загрузка окружения';
+    hint = 'HDR-панорама';
+  } else if (!modelDone) {
+    text = 'Загрузка модели';
+    hint = 'Геометрия и текстуры';
+  } else {
+    text = 'Почти готово';
+    hint = 'Финальная сборка сцены';
+  }
+
+  if (bootStatus.textContent !== text) bootStatus.textContent = text;
+  if (bootHint.textContent   !== hint) bootHint.textContent   = hint;
+}
+
+function loaderTick() {
+  if (!loaderRunning) return;
+  displayedProgress += (targetProgress - displayedProgress) * 0.14;
+  if (Math.abs(targetProgress - displayedProgress) < 0.002) {
+    displayedProgress = targetProgress;
+  }
+  bootBar.style.transform = `scaleX(${displayedProgress})`;
+  bootPercent.textContent = Math.round(displayedProgress * 100) + '%';
+  requestAnimationFrame(loaderTick);
+}
+
+function startLoaderLoop() {
+  loaderRunning = true;
+  requestAnimationFrame(loaderTick);
+}
+
+function waitForProgress(target, timeoutMs = 800) {
+  return new Promise((resolve) => {
+    const started = performance.now();
+    function check() {
+      if (displayedProgress >= target - 0.005 || performance.now() - started > timeoutMs) {
+        resolve();
+      } else {
+        requestAnimationFrame(check);
+      }
+    }
+    check();
+  });
+}
+
+function onProgressHandler(state) {
+  return (evt) => {
+    if (evt && evt.lengthComputable && evt.total > 0) {
+      state.loaded = evt.loaded;
+      state.total  = evt.total;
+      computeTargetProgress();
+    }
+  };
+}
+
+/* ============================================================
+   Загрузка окружения (EXR) — возвращает Promise
+   ============================================================ */
+function loadEnvironment() {
+  return new Promise((resolve) => {
+    new EXRLoader().load(
+      ENV_URL,
+      (tex) => {
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        scene.background = tex;
+        scene.backgroundIntensity = START_BG_INTENSITY;
+        scene.backgroundRotation = new THREE.Euler(0, 0, 0);
+
+        scene.environment = pmrem.fromEquirectangular(tex).texture;
+        scene.environmentIntensity = START_ENV_INTENSITY;
+        scene.environmentRotation = new THREE.Euler(0, 0, 0);
+
+        loadState.exr.done = true;
+        computeTargetProgress();
+        resolve();
+      },
+      onProgressHandler(loadState.exr),
+      (err) => {
+        console.warn('EXR не загрузился:', err);
+        loadState.exr.done = true;
+        computeTargetProgress();
+        resolve();
+      }
+    );
+  });
+}
+
+/* ============================================================
    Загрузка моделей
    ============================================================ */
 const gltfLoader = new GLTFLoader();
 let currentModelIndex = 0;
 let currentModel = null;
-let isTransitioning = false;
+let isTransitioning = true; // заблокировано до окончания boot
 
 const prevBtn = document.getElementById('prev');
 const nextBtn = document.getElementById('next');
@@ -586,13 +848,8 @@ function disposeObject(obj) {
   });
 }
 
-function showLoader() {
-  loaderText.textContent = `Загрузка модели ${currentModelIndex + 1} / ${MODELS.length}`;
-  loaderEl.classList.remove('hidden');
-}
-function hideLoader() {
-  loaderEl.classList.add('hidden');
-}
+function showMiniLoader() { miniLoader.classList.remove('hidden'); }
+function hideMiniLoader() { miniLoader.classList.add('hidden'); }
 
 function prepareModel(gltf) {
   const root = gltf.scene;
@@ -690,6 +947,7 @@ function revealNewModel(model) {
   });
 }
 
+/* --- Переходы между моделями (после boot) --- */
 async function loadModel(index) {
   if (isTransitioning) return;
   isTransitioning = true;
@@ -697,13 +955,13 @@ async function loadModel(index) {
 
   await hideCurrentModel();
 
-  showLoader();
+  showMiniLoader();
 
   gltfLoader.load(
     MODELS[index],
     async (gltf) => {
       const model = prepareModel(gltf);
-      hideLoader();
+      hideMiniLoader();
       await revealNewModel(model);
 
       currentModel = model;
@@ -716,11 +974,92 @@ async function loadModel(index) {
     undefined,
     (err) => {
       console.error('Ошибка загрузки модели:', err);
-      hideLoader();
+      hideMiniLoader();
       isTransitioning = false;
       setNavDisabled(false);
     }
   );
+}
+
+/* ============================================================
+   Первичная загрузка (boot)
+   ============================================================ */
+function loadFirstModel() {
+  return new Promise((resolve) => {
+    gltfLoader.load(
+      MODELS[0],
+      (gltf) => {
+        const model = prepareModel(gltf);
+        modelWrapper.add(model);
+
+        // стартовое состояние для красивого появления
+        modelWrapper.scale.setScalar(0.88);
+        modelWrapper.rotation.y = -0.4;
+
+        currentModel = model;
+        updateNameLabel();
+
+        loadState.model.done = true;
+        computeTargetProgress();
+        resolve();
+      },
+      onProgressHandler(loadState.model),
+      (err) => {
+        console.error('Ошибка загрузки модели:', err);
+        loadState.model.done = true;
+        computeTargetProgress();
+        resolve();
+      }
+    );
+  });
+}
+
+function revealInitialModel() {
+  tween({
+    from: 0, to: 1, duration: 900, easing: easeOutCubic,
+    onUpdate: (t) => {
+      const s = 0.88 + 0.12 * t;
+      modelWrapper.scale.setScalar(s);
+      modelWrapper.rotation.y = -0.4 * (1 - t);
+    },
+    onComplete: () => {
+      modelWrapper.scale.setScalar(1);
+      modelWrapper.rotation.y = 0;
+    },
+  });
+}
+
+async function boot() {
+  startLoaderLoop();
+
+  // Параллельно грузим окружение и первую модель
+  const exrPromise   = loadEnvironment();
+  const modelPromise = loadFirstModel();
+
+  await Promise.all([exrPromise, modelPromise]);
+
+  // Даём полосе прогресса доехать до 100%
+  await waitForProgress(1, 900);
+
+  // Первый рендер кадра (пока ещё под загрузчиком)
+  animate();
+  await new Promise((r) => requestAnimationFrame(r));
+  await new Promise((r) => requestAnimationFrame(r));
+
+  // Прячем полноэкранный загрузчик
+  loaderRunning = false;
+  bootLoader.classList.add('hidden');
+
+  // Красивое появление модели + вспышка кольца
+  flashRing();
+  revealInitialModel();
+
+  // Разблокируем управление
+  isTransitioning = false;
+  setNavDisabled(false);
+
+  // Небольшая задержка — чтобы transition не мешал первому кадру
+  await new Promise((r) => setTimeout(r, 50));
 }
 
 /* ============================================================
@@ -834,7 +1173,6 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  // Reflector имеет фиксированный RT 1024×1024 — ресайз ему не нужен.
 });
 
 /* ============================================================
@@ -885,8 +1223,7 @@ function animate() {
    Старт
    ============================================================ */
 updateNameLabel();
-loadModel(currentModelIndex);
-animate();
+boot();
 </script>
 
 </body>
